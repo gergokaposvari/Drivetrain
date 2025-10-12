@@ -1,32 +1,14 @@
 [project]
-name = "car-rl-game"
+name = "car-game"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
-
-[dependency-groups]
-dev = [
-    "black>=25.9.0",
-    "commitizen>=4.9.1",
-    "mypy>=1.18.2",
-    "poethepoet>=0.37.0",
-    "pre-commit>=4.3.0",
-    "pytest>=8.4.2",
-    "ruff>=0.13.2",
-]
-
-[tool.poe.tasks]
-lint = "ruff check src tests"
-format = "black src tests"
-typecheck = "mypy src tests"
-test = "pytest"
-
-[tool.commitizen]
-name = "cz_conventional_commits"
-version = "0.1.0"
-version_files = [
-    "src/car_rl_game/__init__.py",
-    "pyproject.toml",
+dependencies = [
+    "box2d>=2.3.10",
+    "box2d-py>=2.3.8",
+    "matplotlib>=3.10.7",
+    "pillow>=10.4.0",
+    "pygame-ce>=2.5.5",
+    "swig>=4.3.1.post0",
 ]
