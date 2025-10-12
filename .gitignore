@@ -8,3 +8,7 @@ wheels/
 
 # Virtual environments
 .venv
+.matplotlib_cache/
+.cache/
+.uvcache/
+.fontconfig_cache/
