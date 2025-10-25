@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from typing import Sequence
+from typing import Dict, Sequence, Set
 
 from Box2D import (  # type: ignore import-untyped
     b2Body,
@@ -13,6 +13,7 @@ from Box2D import (  # type: ignore import-untyped
 )
 
 from .tire import Tire
+from .state import CarState, TireState, vec2_to_tuple
 
 
 class Car:
@@ -106,6 +107,30 @@ class Car:
         new_angle = angle_now + angle_to_turn
         front_left_joint.SetLimits(new_angle, new_angle)
         front_right_joint.SetLimits(new_angle, new_angle)
+
+    def snapshot(self, tire_contacts: Dict[object, Set[str]] | None = None) -> CarState:
+        """Return a serialisable snapshot of the car state."""
+        if tire_contacts is None:
+            tire_contacts = {}
+        tire_states: list[TireState] = []
+        for tire in self.tires:
+            contacts = tuple(sorted(tire_contacts.get(tire, ())))
+            tire_states.append(
+                TireState(
+                    position=vec2_to_tuple(tire.body.position),
+                    forward_velocity=vec2_to_tuple(tire.forward_velocity),
+                    lateral_velocity=vec2_to_tuple(tire.lateral_velocity),
+                    contacts=contacts,
+                )
+            )
+        body = self.body
+        return CarState(
+            position=vec2_to_tuple(body.position),
+            linear_velocity=vec2_to_tuple(body.linearVelocity),
+            angle=float(body.angle),
+            angular_velocity=float(body.angularVelocity),
+            tire_states=tuple(tire_states),
+        )
 
 
 __all__ = ["Car"]

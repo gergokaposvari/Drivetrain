@@ -48,11 +48,19 @@ def load_track(path: Path) -> Track:
             spawn_direction = None
             if raw.get("spawn_direction") is not None:
                 spawn_direction = _parse_vector(raw.get("spawn_direction"), "spawn_direction")
+            best_lap_time = _parse_optional_float(raw.get("best_lap_time"), "best_lap_time")
+            best_sector_times = _parse_optional_float_sequence(
+                raw.get("best_lap_sector_times"),
+                "best_lap_sector_times",
+                expected_len=None,
+            )
             return Track(
                 boundary=boundary,
                 surfaces=surfaces,
                 spawn_point=spawn_point,
                 spawn_direction=spawn_direction,
+                best_lap_time=best_lap_time,
+                best_lap_sector_times=best_sector_times,
             )
 
         if "control_points" in raw:
@@ -61,6 +69,12 @@ def load_track(path: Path) -> Track:
             )
             widths = _parse_widths(raw.get("widths"), len(control_points))
             spawn_point = _parse_point(raw.get("spawn_point"), "spawn_point")
+            best_lap_time = _parse_optional_float(raw.get("best_lap_time"), "best_lap_time")
+            best_sector_times = _parse_optional_float_sequence(
+                raw.get("best_lap_sector_times"),
+                "best_lap_sector_times",
+                expected_len=len(control_points),
+            )
             config = SplineTrackConfig(
                 control_points=control_points,
                 widths=widths,
@@ -71,17 +85,20 @@ def load_track(path: Path) -> Track:
                 margin=float(raw.get("margin", 20.0)),
             )
             track = build_track_from_spline(config)
+            spawn_direction = track.spawn_direction
             if raw.get("spawn_direction") is not None:
                 spawn_direction = _parse_vector(raw.get("spawn_direction"), "spawn_direction")
-                track = Track(
-                    boundary=track.boundary,
-                    surfaces=track.surfaces,
-                    spawn_point=track.spawn_point,
-                    spawn_direction=spawn_direction,
-                    control_points=track.control_points,
-                    widths=track.widths,
-                    sector_lines=track.sector_lines,
-                )
+            track = Track(
+                boundary=track.boundary,
+                surfaces=track.surfaces,
+                spawn_point=track.spawn_point,
+                spawn_direction=spawn_direction,
+                control_points=track.control_points,
+                widths=track.widths,
+                sector_lines=track.sector_lines,
+                best_lap_time=best_lap_time,
+                best_lap_sector_times=best_sector_times,
+            )
             return track
 
         raise TrackLoadError("Track must define either 'surfaces' or 'control_points'")
@@ -187,4 +204,45 @@ def _parse_vector(raw_vec, label: str) -> Vec2:
     return x / length, y / length
 
 
-__all__ = ["LoadedTrack", "TrackLoadError", "discover_tracks", "load_track"]
+def _parse_optional_float(raw_value, label: str) -> float | None:
+    if raw_value is None:
+        return None
+    try:
+        return float(raw_value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must be a number") from exc
+
+
+def _parse_optional_float_sequence(
+    raw_values,
+    label: str,
+    *,
+    expected_len: int | None,
+) -> Sequence[float] | None:
+    if raw_values is None:
+        return None
+    if not isinstance(raw_values, (list, tuple)):
+        raise ValueError(f"{label} must be an array of numbers")
+    values = [float(value) for value in raw_values]
+    if expected_len is not None and len(values) != expected_len:
+        raise ValueError(f"{label} must contain {expected_len} values")
+    return tuple(values)
+
+
+def save_track_timing(path: Path, *, best_lap_time: float, best_sector_times: Sequence[float]) -> None:
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"Warning: unable to read track file {path!s} for timing save: {exc}")
+        return
+
+    data["best_lap_time"] = float(best_lap_time)
+    data["best_lap_sector_times"] = [float(value) for value in best_sector_times]
+
+    try:
+        path.write_text(json.dumps(data, indent=2) + "\n")
+    except OSError as exc:
+        print(f"Warning: unable to write track file {path!s} for timing save: {exc}")
+
+
+__all__ = ["LoadedTrack", "TrackLoadError", "discover_tracks", "load_track", "save_track_timing"]

@@ -33,6 +33,8 @@ class Track:
     control_points: Sequence[Vec2] | None = None
     widths: Sequence[float] | None = None
     sector_lines: Sequence[Tuple[Vec2, Vec2]] | None = None
+    best_lap_time: float | None = None
+    best_lap_sector_times: Sequence[float] | None = None
 
 
 def default_track() -> Track:

@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import hypot
-from typing import List, Sequence, Tuple
+from typing import Callable, List, Sequence, Tuple
 
 Vec2 = Tuple[float, float]
 
@@ -35,6 +34,10 @@ class TimingManager:
         control_points: Sequence[Vec2],
         widths: Sequence[float],
         sector_lines: Sequence[Tuple[Vec2, Vec2]] | None = None,
+        *,
+        best_lap_time: float | None = None,
+        best_sector_times: Sequence[float] | None = None,
+        on_best_lap: Callable[[float, Sequence[float]], None] | None = None,
     ) -> None:
         if len(control_points) < 4:
             raise ValueError("TimingManager requires at least four control points")
@@ -56,8 +59,16 @@ class TimingManager:
             ]
 
         self._best_sector_times: List[float | None] = [None] * self._num_points
-        self._best_lap_time: float | None = None
+        self._best_lap_sector_times: List[float] | None = None
+        if best_sector_times is not None:
+            if len(best_sector_times) != self._num_points:
+                raise ValueError("best_sector_times must match number of control points")
+            converted = [float(value) for value in best_sector_times]
+            self._best_sector_times = list(converted)
+            self._best_lap_sector_times = list(converted)
+        self._best_lap_time: float | None = best_lap_time
         self._last_lap_time: float | None = None
+        self._on_best_lap = on_best_lap
 
         self._running = False
         self._awaiting_start_input = True
@@ -136,20 +147,15 @@ class TimingManager:
         self._sector_times_current[sector_index] = sector_time
 
         best_time = self._best_sector_times[sector_index]
-        faster = None
         if best_time is None:
             faster = True
-            self._best_sector_times[sector_index] = sector_time
         else:
             faster = sector_time < best_time
-            if faster:
-                self._best_sector_times[sector_index] = sector_time
-
         self._sector_statuses[sector_index] = SectorStatus(
             completed=True,
             faster=faster,
             current_time=sector_time,
-            best_time=self._best_sector_times[sector_index],
+            best_time=best_time,
         )
 
         self._last_sector_timestamp = self._current_time
@@ -165,7 +171,13 @@ class TimingManager:
             lap_time = self._current_time
             self._last_lap_time = lap_time
             if self._best_lap_time is None or lap_time < self._best_lap_time:
-                self._best_lap_time = lap_time
+                sector_times = [float(time) for time in self._sector_times_current if time is not None]
+                if len(sector_times) == self._num_points:
+                    self._best_lap_time = lap_time
+                    self._best_lap_sector_times = list(sector_times)
+                    self._best_sector_times = list(sector_times)
+                    if self._on_best_lap is not None:
+                        self._on_best_lap(lap_time, tuple(sector_times))
         else:
             self._last_lap_time = None
 
@@ -197,6 +209,12 @@ class TimingManager:
     @property
     def segments(self) -> Sequence[Tuple[Vec2, Vec2]]:
         return tuple(self._segments)
+
+    @property
+    def best_lap_sector_times(self) -> Sequence[float] | None:
+        if self._best_lap_sector_times is None:
+            return None
+        return tuple(self._best_lap_sector_times)
 
 
 def _segments_intersect(p1: Vec2, p2: Vec2, q1: Vec2, q2: Vec2) -> bool:

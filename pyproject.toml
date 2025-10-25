@@ -11,5 +11,6 @@ dependencies = [
     "matplotlib>=3.10.7",
     "pillow>=10.4.0",
     "pygame-ce>=2.5.5",
+    "pytest>=8.4.2",
     "swig>=4.3.1.post0",
 ]

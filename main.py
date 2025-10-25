@@ -5,17 +5,14 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import Sequence
 
 import pygame
 
-from src.topdown import TrackLoadError, discover_tracks, load_track
+from src.topdown import TrackLoadError, discover_tracks, load_track, save_track_timing
 from src.topdown.input import InputHandler
 from src.topdown.render import RenderConfig, Renderer
-from src.topdown.simulation import Simulation
-
-TIME_STEP = 1.0 / 60.0
-VELOCITY_ITERATIONS = 6
-POSITION_ITERATIONS = 2
+from src.topdown.runtime import SimulationConfig, SimulationSession
 
 
 def main() -> None:
@@ -27,7 +24,7 @@ def main() -> None:
         _print_track_list(available_tracks)
         return
 
-    selected_track = _resolve_track(args.track, available_tracks, tracks_dir)
+    selected_track, track_path = _resolve_track(args.track, available_tracks, tracks_dir)
     pygame.init()
     config = RenderConfig()
     screen = pygame.display.set_mode(config.screen_size)
@@ -35,7 +32,11 @@ def main() -> None:
 
     input_handler = InputHandler()
     clock = pygame.time.Clock()
-    simulation = Simulation(track=selected_track)
+    session = SimulationSession(
+        track=selected_track,
+        config=SimulationConfig(),
+        on_best_lap=_build_best_lap_callback(track_path),
+    )
     renderer = Renderer(screen, config)
 
     running = True
@@ -48,8 +49,8 @@ def main() -> None:
             else:
                 input_handler.process_event(event)
 
-        simulation.step(TIME_STEP, VELOCITY_ITERATIONS, POSITION_ITERATIONS, input_handler.active)
-        renderer.draw(simulation)
+        session.step(input_handler.active)
+        renderer.draw(session.simulation)
         clock.tick(60)
 
     pygame.quit()
@@ -81,29 +82,44 @@ def _print_track_list(available_tracks) -> None:
 
 def _resolve_track(track_arg, available_tracks, tracks_dir: Path):
     if track_arg is None:
-        return None
+        return None, None
 
     candidate_path = Path(track_arg)
     if candidate_path.exists():
         try:
-            return load_track(candidate_path)
+            return load_track(candidate_path), candidate_path
         except TrackLoadError as exc:
             print(f"Warning: {exc}; falling back to default track.")
-            return None
+            return None, None
 
     if track_arg in available_tracks:
-        return available_tracks[track_arg].track
+        loaded = available_tracks[track_arg]
+        return loaded.track, loaded.path
 
     candidate_file = tracks_dir / f"{track_arg}.json"
     if candidate_file.exists():
         try:
-            return load_track(candidate_file)
+            return load_track(candidate_file), candidate_file
         except TrackLoadError as exc:
             print(f"Warning: {exc}; falling back to default track.")
-            return None
+            return None, None
 
     print(f"Warning: track '{track_arg}' not found; using default track.")
-    return None
+    return None, None
+
+
+def _build_best_lap_callback(track_path: Path | None):
+    if track_path is None:
+        return None
+
+    def _callback(best_lap_time: float, sector_times: Sequence[float]) -> None:
+        save_track_timing(track_path, best_lap_time=best_lap_time, best_sector_times=sector_times)
+        sector_text = ", ".join(f"{time:.3f}s" for time in sector_times)
+        print(
+            f"New best lap {best_lap_time:.3f}s saved to {track_path.name} (sectors: {sector_text})"
+        )
+
+    return _callback
 
 
 if __name__ == "__main__":

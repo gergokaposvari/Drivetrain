@@ -5,10 +5,13 @@ from .contact import TopDownContactListener
 from .ground import GroundArea
 from .input import InputHandler, InputMapping
 from .render import RenderConfig, Renderer
+from .runtime import SimulationConfig, SimulationSession
 from .simulation import Simulation
+from .state import CarState, SimulationSnapshot, TireState
+from .gym_env import RewardWeights, TopDownCarEnv
 from .tire import Tire
 from .track import Track, TrackSurface, default_track
-from .track_loader import LoadedTrack, TrackLoadError, discover_tracks, load_track
+from .track_loader import LoadedTrack, TrackLoadError, discover_tracks, load_track, save_track_timing
 from .timing import TimingManager
 from .track_builder import (
     DEFAULT_GRASS_FRICTION,
@@ -16,6 +19,7 @@ from .track_builder import (
     SplineTrackConfig,
     build_track_from_spline,
 )
+from .vector_env import make_vector_env
 
 __all__ = [
     "Car",
@@ -25,6 +29,11 @@ __all__ = [
     "RenderConfig",
     "Renderer",
     "Simulation",
+    "SimulationConfig",
+    "SimulationSession",
+    "TopDownCarEnv",
+    "RewardWeights",
+    "make_vector_env",
     "Tire",
     "TopDownContactListener",
     "Track",
@@ -34,9 +43,13 @@ __all__ = [
     "TrackLoadError",
     "discover_tracks",
     "load_track",
+    "save_track_timing",
     "SplineTrackConfig",
     "build_track_from_spline",
     "DEFAULT_ROAD_FRICTION",
     "DEFAULT_GRASS_FRICTION",
     "TimingManager",
+    "CarState",
+    "TireState",
+    "SimulationSnapshot",
 ]
