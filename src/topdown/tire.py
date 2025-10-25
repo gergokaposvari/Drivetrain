@@ -21,9 +21,9 @@ class Tire:
         *,
         max_forward_speed: float = 100.0,
         max_backward_speed: float = -20.0,
-        max_drive_force: float = 150.0,
+        max_drive_force: float = 175.0,
         turn_torque: float = 15.0,
-        max_lateral_impulse: float = 3.0,
+        max_lateral_impulse: float = 3.5,
         dimensions: tuple[float, float] = (0.5, 1.25),
         density: float = 1.0,
         position: tuple[float, float] = (0.0, 0.0),
@@ -57,7 +57,9 @@ class Tire:
         impulse = -self.lateral_velocity * self.body.mass
         if impulse.length > self.max_lateral_impulse:
             impulse *= self.max_lateral_impulse / impulse.length
-        self.body.ApplyLinearImpulse(self.current_traction * impulse, self.body.worldCenter, True)
+        self.body.ApplyLinearImpulse(
+            self.current_traction * impulse, self.body.worldCenter, True
+        )
 
         angular_impulse = (
             0.1 * self.current_traction * self.body.inertia * -self.body.angularVelocity

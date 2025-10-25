@@ -22,7 +22,7 @@ CONTROL_LINE_COLOR = (200, 200, 210)
 TEXT_COLOR = (240, 240, 240)
 ROAD_ALPHA = 220
 
-DEFAULT_WIDTH = 20.0
+DEFAULT_WIDTH = 30.0
 DEFAULT_MARGIN = 25.0
 DEFAULT_SAMPLES_PER_SEGMENT = 10
 PIXELS_PER_METER = 5.0
@@ -75,7 +75,7 @@ def render_track(surface: pygame.Surface, track: Track, center: Vec2) -> None:
         for polygon in road_surface.polygons:
             points = [world_to_screen(point, center) for point in polygon]
             pygame.draw.polygon(temp, road_color, points)
-            
+
             if road_outline is not None:
                 pygame.draw.polygon(surface, road_outline, points, width=2)
         surface.blit(temp, (0, 0))
@@ -98,7 +98,9 @@ def render_control_points(
         surface.blit(label, (screen_point[0] + 8, screen_point[1] - 6))
 
 
-def render_overlay(surface: pygame.Surface, font: pygame.font.Font, messages: Sequence[str]) -> None:
+def render_overlay(
+    surface: pygame.Surface, font: pygame.font.Font, messages: Sequence[str]
+) -> None:
     y = 10
     for message in messages:
         text = font.render(message, True, TEXT_COLOR)
@@ -106,7 +108,9 @@ def render_overlay(surface: pygame.Surface, font: pygame.font.Font, messages: Se
         y += text.get_height() + 4
 
 
-def save_track(path: Path, control_points: Sequence[Vec2], widths: Sequence[float]) -> None:
+def save_track(
+    path: Path, control_points: Sequence[Vec2], widths: Sequence[float]
+) -> None:
     spawn_dir = [0.0, 1.0]
     if len(control_points) >= 2:
         dx = control_points[1][0] - control_points[0][0]
@@ -124,7 +128,9 @@ def save_track(path: Path, control_points: Sequence[Vec2], widths: Sequence[floa
     path.write_text(json.dumps(data, indent=2))
 
 
-def build_preview_track(control_points: Sequence[Vec2], widths: Sequence[float]) -> Track | None:
+def build_preview_track(
+    control_points: Sequence[Vec2], widths: Sequence[float]
+) -> Track | None:
     if len(control_points) < 4:
         return None
     config = SplineTrackConfig(
@@ -159,7 +165,9 @@ def run_editor(output_path: Path | None) -> None:
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     running = False
-                elif event.key == pygame.K_s and len(control_points) >= 4 and output_path:
+                elif (
+                    event.key == pygame.K_s and len(control_points) >= 4 and output_path
+                ):
                     save_track(output_path, control_points, widths)
                 elif event.key == pygame.K_z and control_points:
                     control_points.pop()
@@ -215,7 +223,9 @@ def run_editor(output_path: Path | None) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Interactive spline-based track editor")
+    parser = argparse.ArgumentParser(
+        description="Interactive spline-based track editor"
+    )
     parser.add_argument(
         "--output",
         type=Path,

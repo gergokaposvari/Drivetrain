@@ -153,9 +153,9 @@ class Renderer:
             pygame.draw.line(self.screen, color, start_pt, end_pt, 1)
 
     def _draw_speedometer(self, car) -> None:
-        velocity = car.body.linearVelocity
+        velocity = car.tires[0].forward_velocity
         speed_mps = velocity.length
-        speed_kmh = speed_mps * 3.6
+        speed_kmh = speed_mps
         label = f"Speed: {speed_kmh:5.1f} km/h"
         text_surface = self._hud_small_font.render(
             label, True, self.config.hud_text_color
