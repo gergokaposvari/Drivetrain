@@ -54,6 +54,8 @@ class Renderer:
         self._font = pygame.font.SysFont("Arial", 16)
         self._hud_font = pygame.font.SysFont("Arial", 24)
         self._hud_small_font = pygame.font.SysFont("Arial", 14)
+        display_surface = pygame.display.get_surface() if pygame.display.get_init() else None
+        self._flip_display = display_surface is not None and display_surface == screen
 
     def draw(self, simulation: Simulation) -> None:
         car = simulation.car
@@ -68,7 +70,8 @@ class Renderer:
             self._draw_sensor_rays(simulation, focus)
         self._draw_speedometer(car)
         self._draw_timing(simulation.timing_state)
-        pygame.display.flip()
+        if self._flip_display:
+            pygame.display.flip()
 
     def _draw_grid(self, focus: b2Vec2) -> None:
         spacing = self.config.grid_spacing

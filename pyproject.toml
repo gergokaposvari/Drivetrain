@@ -13,4 +13,5 @@ dependencies = [
     "pygame-ce>=2.5.5",
     "pytest>=8.4.2",
     "swig>=4.3.1.post0",
+    "tqdm>=4.67.1",
 ]

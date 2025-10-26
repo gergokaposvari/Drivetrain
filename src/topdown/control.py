@@ -40,11 +40,42 @@ def enumerate_controls(
     steer_levels: Sequence[int] = (-1, 0, 1),
 ) -> List[DiscreteControl]:
     """Return all combinations of the supplied throttle and steer levels."""
-    controls: List[DiscreteControl] = []
+    raw: List[DiscreteControl] = []
     for throttle in throttle_levels:
         for steer in steer_levels:
-            controls.append(DiscreteControl(throttle=throttle, steer=steer))
-    return controls
+            ctrl = DiscreteControl(throttle=throttle, steer=steer)
+            if ctrl not in raw:
+                raw.append(ctrl)
+
+    center: List[DiscreteControl] = []
+    forward_straight: List[DiscreteControl] = []
+    forward_turns: List[DiscreteControl] = []
+    coast_turns: List[DiscreteControl] = []
+    reverse_turns: List[DiscreteControl] = []
+    reverse_straight: List[DiscreteControl] = []
+
+    for ctrl in raw:
+        if ctrl.throttle == 0 and ctrl.steer == 0:
+            center.append(ctrl)
+        elif ctrl.throttle > 0 and ctrl.steer == 0:
+            forward_straight.append(ctrl)
+        elif ctrl.throttle > 0 and ctrl.steer != 0:
+            forward_turns.append(ctrl)
+        elif ctrl.throttle == 0 and ctrl.steer != 0:
+            coast_turns.append(ctrl)
+        elif ctrl.throttle < 0 and ctrl.steer != 0:
+            reverse_turns.append(ctrl)
+        elif ctrl.throttle < 0 and ctrl.steer == 0:
+            reverse_straight.append(ctrl)
+
+    return (
+        center
+        + forward_straight
+        + sorted(forward_turns, key=lambda c: c.steer)
+        + sorted(coast_turns, key=lambda c: c.steer)
+        + sorted(reverse_turns, key=lambda c: c.steer)
+        + reverse_straight
+    )
 
 
 __all__ = ["DiscreteControl", "control_to_keys", "enumerate_controls"]

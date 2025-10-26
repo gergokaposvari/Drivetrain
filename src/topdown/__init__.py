@@ -2,6 +2,7 @@
 
 from .car import Car
 from .contact import TopDownContactListener
+from .gym_env import EnvironmentConfig, TopdownCarEnv
 from .ground import GroundArea
 from .input import InputHandler, InputMapping
 from .render import RenderConfig, Renderer
@@ -20,6 +21,7 @@ from .track_builder import (
 __all__ = [
     "Car",
     "GroundArea",
+    "EnvironmentConfig",
     "InputHandler",
     "InputMapping",
     "RenderConfig",
@@ -29,6 +31,7 @@ __all__ = [
     "TopDownContactListener",
     "Track",
     "TrackSurface",
+    "TopdownCarEnv",
     "default_track",
     "LoadedTrack",
     "TrackLoadError",
