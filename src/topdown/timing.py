@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from math import hypot
-from typing import List, Sequence, Tuple
+from typing import Callable, List, Sequence, Tuple
 
 Vec2 = Tuple[float, float]
 
@@ -27,6 +26,17 @@ class TimingState:
     last_lap_time: float | None
 
 
+@dataclass(frozen=True)
+class LapResult:
+    """Outcome of a completed lap."""
+
+    lap_time: float | None
+    sector_times: Sequence[float | None]
+    sector_improved: Sequence[bool]
+    invalid: bool
+    new_best_lap: bool
+
+
 class TimingManager:
     """Tracks mini-sector timings along the track control points."""
 
@@ -35,6 +45,10 @@ class TimingManager:
         control_points: Sequence[Vec2],
         widths: Sequence[float],
         sector_lines: Sequence[Tuple[Vec2, Vec2]] | None = None,
+        *,
+        lap_callback: Callable[[LapResult], None] | None = None,
+        best_lap_time: float | None = None,
+        best_sector_times: Sequence[float | None] | None = None,
     ) -> None:
         if len(control_points) < 4:
             raise ValueError("TimingManager requires at least four control points")
@@ -55,9 +69,14 @@ class TimingManager:
                 for i in range(self._num_points)
             ]
 
-        self._best_sector_times: List[float | None] = [None] * self._num_points
-        self._best_lap_time: float | None = None
+        self._best_sector_times: List[float | None] = (
+            list(best_sector_times) if best_sector_times is not None else [None] * self._num_points
+        )
+        if len(self._best_sector_times) != self._num_points:
+            raise ValueError("best_sector_times must match number of control points")
+        self._best_lap_time: float | None = best_lap_time
         self._last_lap_time: float | None = None
+        self._lap_callback = lap_callback
 
         self._running = False
         self._awaiting_start_input = True
@@ -68,6 +87,7 @@ class TimingManager:
         self._current_segment_index = 0
         self._last_sector_timestamp = 0.0
         self._sector_times_current: List[float | None] = [None] * self._num_points
+        self._sector_improved_current: List[bool] = [False] * self._num_points
         self._sector_statuses: List[SectorStatus] = [
             SectorStatus(completed=False, faster=None, current_time=None, best_time=None)
             for _ in range(self._num_points)
@@ -112,6 +132,7 @@ class TimingManager:
         self._current_time = 0.0
         self._last_sector_timestamp = 0.0
         self._sector_times_current = [None] * self._num_points
+        self._sector_improved_current = [False] * self._num_points
         self._sector_statuses = [
             SectorStatus(
                 completed=False,
@@ -140,10 +161,12 @@ class TimingManager:
         if best_time is None:
             faster = True
             self._best_sector_times[sector_index] = sector_time
+            self._sector_improved_current[sector_index] = True
         else:
             faster = sector_time < best_time
             if faster:
                 self._best_sector_times[sector_index] = sector_time
+            self._sector_improved_current[sector_index] = bool(faster)
 
         self._sector_statuses[sector_index] = SectorStatus(
             completed=True,
@@ -161,11 +184,18 @@ class TimingManager:
             self._prev_position = None
 
     def _complete_lap(self) -> None:
-        if not self._invalid and all(time is not None for time in self._sector_times_current):
-            lap_time = self._current_time
+        sector_times_snapshot = tuple(self._sector_times_current)
+        improved_snapshot = tuple(self._sector_improved_current)
+        lap_valid = not self._invalid and all(time is not None for time in sector_times_snapshot)
+        lap_time = self._current_time if lap_valid else None
+        new_best_lap = False
+        if lap_valid:
             self._last_lap_time = lap_time
-            if self._best_lap_time is None or lap_time < self._best_lap_time:
+            if lap_time is not None and (
+                self._best_lap_time is None or lap_time < self._best_lap_time
+            ):
                 self._best_lap_time = lap_time
+                new_best_lap = True
         else:
             self._last_lap_time = None
 
@@ -173,6 +203,7 @@ class TimingManager:
         self._last_sector_timestamp = 0.0
         self._invalid = False
         self._sector_times_current = [None] * self._num_points
+        self._sector_improved_current = [False] * self._num_points
         self._sector_statuses = [
             SectorStatus(
                 completed=False,
@@ -182,6 +213,15 @@ class TimingManager:
             )
             for i in range(self._num_points)
         ]
+        if self._lap_callback is not None:
+            result = LapResult(
+                lap_time=lap_time,
+                sector_times=sector_times_snapshot,
+                sector_improved=improved_snapshot,
+                invalid=not lap_valid,
+                new_best_lap=new_best_lap,
+            )
+            self._lap_callback(result)
 
     @property
     def state(self) -> TimingState:
@@ -197,6 +237,36 @@ class TimingManager:
     @property
     def segments(self) -> Sequence[Tuple[Vec2, Vec2]]:
         return tuple(self._segments)
+
+    @property
+    def best_lap_time(self) -> float | None:
+        return self._best_lap_time
+
+    @property
+    def best_sector_times(self) -> Sequence[float | None]:
+        return tuple(self._best_sector_times)
+
+    def reset_run(self) -> None:
+        """Reset the running state while preserving best records."""
+        self._running = False
+        self._awaiting_start_input = True
+        self._invalid = False
+        self._on_road = True
+        self._current_time = 0.0
+        self._current_segment_index = 0
+        self._last_sector_timestamp = 0.0
+        self._sector_times_current = [None] * self._num_points
+        self._sector_improved_current = [False] * self._num_points
+        self._sector_statuses = [
+            SectorStatus(
+                completed=False,
+                faster=None,
+                current_time=None,
+                best_time=self._best_sector_times[i],
+            )
+            for i in range(self._num_points)
+        ]
+        self._prev_position = None
 
 
 def _segments_intersect(p1: Vec2, p2: Vec2, q1: Vec2, q2: Vec2) -> bool:

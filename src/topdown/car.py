@@ -107,5 +107,48 @@ class Car:
         front_left_joint.SetLimits(new_angle, new_angle)
         front_right_joint.SetLimits(new_angle, new_angle)
 
+    def reset(self, position: tuple[float, float], angle: float) -> None:
+        """Teleport the car to a specific pose and clear residual motion."""
+        pos_vec = b2Vec2(*position)
+        self.body.position = pos_vec
+        self.body.angle = angle
+        self.body.linearVelocity = b2Vec2(0.0, 0.0)
+        self.body.angularVelocity = 0.0
+        self.body.awake = True
+
+        for tire, anchor, joint in zip(self.tires, self.tire_anchors, self.joints):
+            anchor_vec = b2Vec2(*anchor)
+            world_anchor = self.body.GetWorldPoint(anchor_vec)
+            tire.body.position = world_anchor
+            tire.body.angle = angle
+            tire.body.linearVelocity = b2Vec2(0.0, 0.0)
+            tire.body.angularVelocity = 0.0
+            tire.body.awake = True
+            joint.SetLimits(0.0, 0.0)
+
+        self._set_front_wheel_angle(0.0)
+
+    @property
+    def forward_speed(self) -> float:
+        return self.body.linearVelocity.length
+
+    @property
+    def forward_vector(self) -> b2Vec2:
+        return self.body.GetWorldVector((0.0, 1.0))
+
+    @property
+    def front_wheel_angle(self) -> float:
+        if len(self.joints) < 4:
+            return 0.0
+        left_angle = self.joints[2].angle
+        right_angle = self.joints[3].angle
+        return 0.5 * (left_angle + right_angle)
+
+    def _set_front_wheel_angle(self, angle: float) -> None:
+        if len(self.joints) < 4:
+            return
+        for joint in self.joints[2:4]:
+            joint.SetLimits(angle, angle)
+
 
 __all__ = ["Car"]

@@ -23,6 +23,14 @@ class TrackSurface:
 
 
 @dataclass(frozen=True)
+class TrackRecords:
+    """Stores lap record metadata for a track."""
+
+    fastest_lap_time: Optional[float] = None
+    fastest_sector_times: Optional[Sequence[Optional[float]]] = None
+
+
+@dataclass(frozen=True)
 class Track:
     """Describes the race surface and outer boundary."""
 
@@ -33,6 +41,7 @@ class Track:
     control_points: Sequence[Vec2] | None = None
     widths: Sequence[float] | None = None
     sector_lines: Sequence[Tuple[Vec2, Vec2]] | None = None
+    records: TrackRecords | None = None
 
 
 def default_track() -> Track:
@@ -103,7 +112,8 @@ def default_track() -> Track:
         surfaces=surfaces,
         spawn_point=(-35.0, -4.0),
         spawn_direction=spawn_direction,
+        records=TrackRecords(),
     )
 
 
-__all__ = ["Track", "TrackSurface", "default_track"]
+__all__ = ["Track", "TrackRecords", "TrackSurface", "default_track"]

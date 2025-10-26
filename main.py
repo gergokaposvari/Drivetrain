@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pygame
 
-from src.topdown import TrackLoadError, discover_tracks, load_track
+from src.topdown import LoadedTrack, TrackLoadError, discover_tracks, load_track
 from src.topdown.input import InputHandler
 from src.topdown.render import RenderConfig, Renderer
 from src.topdown.simulation import Simulation
@@ -35,7 +35,10 @@ def main() -> None:
 
     input_handler = InputHandler()
     clock = pygame.time.Clock()
-    simulation = Simulation(track=selected_track)
+    simulation = Simulation(
+        track=selected_track.track if selected_track else None,
+        track_file=selected_track.path if selected_track else None,
+    )
     renderer = Renderer(screen, config)
 
     running = True
@@ -79,25 +82,39 @@ def _print_track_list(available_tracks) -> None:
         print(f"  {name:15s} -> {loaded.path}")
 
 
-def _resolve_track(track_arg, available_tracks, tracks_dir: Path):
+def _resolve_track(
+    track_arg,
+    available_tracks,
+    tracks_dir: Path,
+) -> LoadedTrack | None:
     if track_arg is None:
         return None
 
     candidate_path = Path(track_arg)
     if candidate_path.exists():
         try:
-            return load_track(candidate_path)
+            track = load_track(candidate_path)
+            return LoadedTrack(
+                name=candidate_path.stem,
+                path=candidate_path,
+                track=track,
+            )
         except TrackLoadError as exc:
             print(f"Warning: {exc}; falling back to default track.")
             return None
 
     if track_arg in available_tracks:
-        return available_tracks[track_arg].track
+        return available_tracks[track_arg]
 
     candidate_file = tracks_dir / f"{track_arg}.json"
     if candidate_file.exists():
         try:
-            return load_track(candidate_file)
+            track = load_track(candidate_file)
+            return LoadedTrack(
+                name=candidate_file.stem,
+                path=candidate_file,
+                track=track,
+            )
         except TrackLoadError as exc:
             print(f"Warning: {exc}; falling back to default track.")
             return None
