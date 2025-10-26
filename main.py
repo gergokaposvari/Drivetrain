@@ -29,7 +29,7 @@ def main() -> None:
 
     selected_track = _resolve_track(args.track, available_tracks, tracks_dir)
     pygame.init()
-    config = RenderConfig()
+    config = RenderConfig(draw_sensor_rays=args.show_sensors)
     screen = pygame.display.set_mode(config.screen_size)
     pygame.display.set_caption("Top Down Car (pybox2d example)")
 
@@ -69,6 +69,11 @@ def _parse_args() -> argparse.Namespace:
         "--list-tracks",
         action="store_true",
         help="List bundled tracks and exit",
+    )
+    parser.add_argument(
+        "--show-sensors",
+        action="store_true",
+        help="Draw raycast sensor rays while driving",
     )
     return parser.parse_args()
 

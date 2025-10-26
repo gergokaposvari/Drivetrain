@@ -119,6 +119,12 @@ class Simulation:
     def front_wheel_angle(self) -> float:
         return self.car.front_wheel_angle
 
+    def sensor_angles(self) -> Sequence[float]:
+        return self._raycast_sensors.angles
+
+    def sensor_max_distance(self) -> float:
+        return self._raycast_sensors.max_distance
+
     def _create_static_geometry(self) -> None:
         boundary_points = list(self.track.boundary)
         if boundary_points[0] != boundary_points[-1]:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Sequence, Tuple
 
@@ -34,6 +35,10 @@ class RenderConfig:
     sector_slow_color: Tuple[int, int, int] = (220, 200, 40)
     sector_background_color: Tuple[int, int, int] = (35, 35, 40)
     sector_line_color: Tuple[int, int, int] = (200, 80, 200)
+    draw_sensor_rays: bool = False
+    sensor_ray_hit_color: Tuple[int, int, int] = (240, 200, 40)
+    sensor_ray_miss_color: Tuple[int, int, int] = (150, 80, 80)
+    sensor_ray_width: int = 2
 
 
 class Renderer:
@@ -59,6 +64,8 @@ class Renderer:
         self._draw_timing_segments(simulation.timing_segments, focus)
         self._draw_boundaries(simulation.boundary_segments, focus)
         self._draw_car(car, focus)
+        if self.config.draw_sensor_rays:
+            self._draw_sensor_rays(simulation, focus)
         self._draw_speedometer(car)
         self._draw_timing(simulation.timing_state)
         pygame.display.flip()
@@ -151,6 +158,42 @@ class Renderer:
             start_pt = self._world_to_screen(b2Vec2(*start), focus)
             end_pt = self._world_to_screen(b2Vec2(*end), focus)
             pygame.draw.line(self.screen, color, start_pt, end_pt, 1)
+
+    def _draw_sensor_rays(self, simulation: Simulation, focus: b2Vec2) -> None:
+        sample = simulation.sample_sensors()
+        if not sample.distances:
+            return
+
+        car = simulation.car
+        origin = car.body.worldCenter
+        forward = car.forward_vector
+        right = b2Vec2(-forward.y, forward.x)
+
+        angles = simulation.sensor_angles()
+        max_distance = simulation.sensor_max_distance()
+
+        for angle_deg, distance, hit in zip(angles, sample.distances, sample.hits):
+            theta = math.radians(angle_deg)
+            direction = forward * math.cos(theta) + right * math.sin(theta)
+            if direction.length == 0:
+                continue
+            direction.Normalize()
+
+            length = min(distance, max_distance)
+            end_point = origin + direction * length
+
+            start_screen = self._world_to_screen(origin, focus)
+            end_screen = self._world_to_screen(end_point, focus)
+            color = (
+                self.config.sensor_ray_hit_color if hit else self.config.sensor_ray_miss_color
+            )
+            pygame.draw.line(
+                self.screen,
+                color,
+                start_screen,
+                end_screen,
+                self.config.sensor_ray_width,
+            )
 
     def _draw_speedometer(self, car) -> None:
         velocity = car.tires[0].forward_velocity
