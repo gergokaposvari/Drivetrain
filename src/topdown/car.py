@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from typing import Sequence
+import numpy as np
 
 from Box2D import (  # type: ignore import-untyped
     b2Body,
@@ -82,6 +83,7 @@ class Car:
             self.joints.append(joint)
 
     def update(self, keys: set[str], hz: float) -> None:
+        print("keys: ", keys)
         for tire in self.tires:
             tire.update_friction()
         for tire in self.tires:
@@ -130,7 +132,7 @@ class Car:
 
     @property
     def forward_speed(self) -> float:
-        return self.body.linearVelocity.length
+        return np.dot(self.body.linearVelocity, self.forward_vector)
 
     @property
     def forward_vector(self) -> b2Vec2:

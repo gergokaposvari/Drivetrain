@@ -51,7 +51,9 @@ def main() -> None:
             else:
                 input_handler.process_event(event)
 
-        simulation.step(TIME_STEP, VELOCITY_ITERATIONS, POSITION_ITERATIONS, input_handler.active)
+        simulation.step(
+            TIME_STEP, VELOCITY_ITERATIONS, POSITION_ITERATIONS, input_handler.active
+        )
         renderer.draw(simulation)
         clock.tick(60)
 

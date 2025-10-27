@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 from typing import Dict, List, Sequence, Set, Tuple
+import math
 
 from Box2D import b2Vec2, b2World  # type: ignore import-untyped
 
@@ -43,10 +44,13 @@ class Simulation:
         self._create_static_geometry()
 
         records = self.track.records
-        best_lap_time = records.fastest_lap_time if isinstance(records, TrackRecords) else None
+        best_lap_time = (
+            records.fastest_lap_time if isinstance(records, TrackRecords) else None
+        )
         best_sector_times = (
             tuple(records.fastest_sector_times)
-            if isinstance(records, TrackRecords) and records.fastest_sector_times is not None
+            if isinstance(records, TrackRecords)
+            and records.fastest_sector_times is not None
             else None
         )
         if (
@@ -54,7 +58,9 @@ class Simulation:
             and self.track.widths
             and len(self.track.control_points) == len(self.track.widths)
         ):
-            if best_sector_times is not None and len(best_sector_times) != len(self.track.control_points):
+            if best_sector_times is not None and len(best_sector_times) != len(
+                self.track.control_points
+            ):
                 best_sector_times = None
             self._timing = TimingManager(
                 self.track.control_points,
@@ -67,7 +73,9 @@ class Simulation:
         else:
             self._timing = None
 
-        self._tire_contact_names: Dict[object, Set[str]] = {tire: set() for tire in self.car.tires}
+        self._tire_contact_names: Dict[object, Set[str]] = {
+            tire: set() for tire in self.car.tires
+        }
         self._tires_on_road = len(self.car.tires)
         self._update_tire_contact_state()
 
@@ -96,7 +104,9 @@ class Simulation:
     ) -> None:
         """Reset the car pose and clear timers."""
         target_position = position if position is not None else self.track.spawn_point
-        target_angle = angle if angle is not None else self._compute_spawn_angle(self.track)
+        target_angle = (
+            angle if angle is not None else self._compute_spawn_angle(self.track)
+        )
         self.car.reset(target_position, target_angle)
         if linear_velocity is not None:
             self.car.body.linearVelocity = b2Vec2(*linear_velocity)
@@ -151,13 +161,20 @@ class Simulation:
     @property
     def surfaces(self) -> Sequence[Tuple[TrackSurface, Sequence[Sequence[b2Vec2]]]]:
         return tuple(
-            (surface, tuple(tuple(vertex for vertex in polygon) for polygon in polygons))
+            (
+                surface,
+                tuple(tuple(vertex for vertex in polygon) for polygon in polygons),
+            )
             for surface, polygons in self._surface_drawables
         )
 
     def _create_surface(self, surface: TrackSurface) -> None:
         body = self.world.CreateStaticBody(
-            userData={"obj": GroundArea(name=surface.name, friction_modifier=surface.friction_modifier)}
+            userData={
+                "obj": GroundArea(
+                    name=surface.name, friction_modifier=surface.friction_modifier
+                )
+            }
         )
         transform = body.transform
         world_polygons: List[List[b2Vec2]] = []
@@ -188,7 +205,9 @@ class Simulation:
             return
 
         counts: Dict[tuple[tuple[int, int], tuple[int, int]], int] = {}
-        segment_map: Dict[tuple[tuple[int, int], tuple[int, int]], Tuple[Vec2, Vec2]] = {}
+        segment_map: Dict[
+            tuple[tuple[int, int], tuple[int, int]], Tuple[Vec2, Vec2]
+        ] = {}
         for start, end in self._road_segment_candidates:
             key = _edge_key(start, end)
             counts[key] = counts.get(key, 0) + 1
@@ -251,7 +270,9 @@ class Simulation:
             pass
 
 
-def _edge_key(start: Vec2, end: Vec2, scale: float = 1000.0) -> tuple[tuple[int, int], tuple[int, int]]:
+def _edge_key(
+    start: Vec2, end: Vec2, scale: float = 1000.0
+) -> tuple[tuple[int, int], tuple[int, int]]:
     ax = round(start[0] * scale)
     ay = round(start[1] * scale)
     bx = round(end[0] * scale)
