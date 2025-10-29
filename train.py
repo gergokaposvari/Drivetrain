@@ -3,10 +3,11 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+import numpy as np
 from tqdm import tqdm
 import pygame
 import gymnasium as gym
-from gymnasium.wrappers import RecordEpisodeStatistics, RecordVideo
+from gymnasium.wrappers import RecordVideo
 
 from src.topdown.rl_agent import DriverAgent
 
@@ -18,7 +19,7 @@ def _register_env() -> None:
         gym.register(
             id=ENV_ID,
             entry_point="src.topdown.gym_env:TopdownCarEnv",
-            max_episode_steps=10000,
+            max_episode_steps=3000,
         )
 
 
@@ -98,8 +99,12 @@ def main() -> None:
         else epsilon_start / max(1, n_episodes / 2)
     )
 
-    env = gym.make(ENV_ID, render_mode="human")
-    env = RecordEpisodeStatistics(env, buffer_length=n_episodes)
+    env = gym.make_vec(
+        ENV_ID,
+        render_mode="human",
+        num_envs=4,
+        vectorization_mode="sync",
+    )
 
     agent = DriverAgent(
         env=env,
@@ -112,20 +117,31 @@ def main() -> None:
     if args.load_qtable and args.qtable.exists():
         agent.load(args.qtable)
 
-    for episode in tqdm(range(n_episodes), desc="Training episodes"):
-        obs, info = env.reset()
+    obs, info = env.reset()
+    env.render()
+
+    episodes_completed = 0
+    pbar = tqdm(total=n_episodes, desc="Training episodes")
+
+    while episodes_completed < n_episodes:
+        actions = agent.get_action(obs)
+        next_obs, reward, terminated, truncated, info = env.step(actions)
         env.render()
-        done = False
 
-        while not done:
-            action = agent.get_action(obs)
-            next_obs, reward, terminated, truncated, info = env.step(action)
-            env.render()
-            agent.update(obs, action, reward, terminated, next_obs)
-            done = terminated or truncated
-            obs = next_obs
+        done = np.logical_or(terminated, truncated)
+        agent.update(obs, actions, reward, done, next_obs)
+        obs = next_obs
 
-        agent.decay_epsilon()
+        if np.any(done):
+            remaining = n_episodes - episodes_completed
+            finished = int(np.sum(done))
+            increment = min(finished, remaining)
+            if increment > 0:
+                for _ in range(increment):
+                    agent.decay_epsilon()
+                episodes_completed += increment
+                pbar.update(increment)
+    pbar.close()
 
     if not args.no_save:
         agent.save(args.qtable)
@@ -142,7 +158,7 @@ def main() -> None:
             episode_trigger=lambda episode: episode == 0,
             name_prefix=args.video_prefix,
         )
-        agent.env = video_env
+        agent.set_env(video_env)
         epsilon_backup = agent.epsilon
         agent.epsilon = 0.0
 

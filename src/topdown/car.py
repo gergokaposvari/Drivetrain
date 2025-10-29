@@ -83,7 +83,6 @@ class Car:
             self.joints.append(joint)
 
     def update(self, keys: set[str], hz: float) -> None:
-        print("keys: ", keys)
         for tire in self.tires:
             tire.update_friction()
         for tire in self.tires:
