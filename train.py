@@ -19,7 +19,7 @@ def _register_env() -> None:
         gym.register(
             id=ENV_ID,
             entry_point="src.topdown.gym_env:TopdownCarEnv",
-            max_episode_steps=3000,
+            max_episode_steps=500,
         )
 
 
