@@ -9,7 +9,7 @@ from src.topdown import LoadedTrack, TrackLoadError, discover_tracks, load_track
 from src.topdown.input import InputHandler
 from src.topdown.render import RenderConfig, Renderer
 from src.topdown.simulation import Simulation
-from topdown.sensors import Segment
+from src.topdown.sensors import Segment
 
 
 TIME_STEP = 1.0 / 60.0
@@ -21,7 +21,7 @@ class CarEnv(gym.Env):
     def __init__(self):
         super().__init__()
 
-        actual_track = load_track(Path(__file__).parent / "test_track.json")
+        actual_track = load_track(Path(__file__).parent.parent.parent / "tracks" / "test_track.json")
         test_track = LoadedTrack(
             name="Test-track",
             path=Path(__file__).parent / "test_track.json",
@@ -42,17 +42,10 @@ class CarEnv(gym.Env):
         )
         self.renderer = Renderer(screen, config)
 
-        self.observation_space = gym.spaces.Dict(
-            {
-                "sensors": gym.spaces.Box(
-                    low=0, high=150, shape=(7,), dtype=np.float32
-                ),
-                "speed": gym.spaces.Box(low=-20, high=90, shape=(1,), dtype=np.float32),
-                "steering_angle": gym.spaces.Box(
-                    low=-0.7, high=0.7, shape=(1,), dtype=np.float32
-                ),
-            }
-        )
+        low = np.array([0, 0, 0, 0, 0, 0, 0, -20, -0.7], dtype=np.float32)
+        high = np.array([150, 150, 150, 150, 150, 150, 150, 90, 0.7], dtype=np.float32)
+
+        self.observation_space = gym.spaces.Box(low=low, high=high, shape=(9,), dtype=np.float32)
         #  action_space[0] = acceleration,
         #  action_space[1] = braking,
         #  action_space[2] = steering left,
@@ -60,23 +53,25 @@ class CarEnv(gym.Env):
         self.action_space = gym.spaces.MultiBinary(4)
 
     def _get_obs(self):
-        return {
-            "sensors": self.simulation.sample_sensors().distances,
-            "speed": self.simulation.car_speed(),
-            "steering_angle": self.simulation.front_wheel_angle(),
-        }
+        obs = np.array(
+            list(self.simulation.sample_sensors().distances)
+            + [self.simulation.car_speed(), self.simulation.front_wheel_angle()],
+            dtype=np.float32
+        )
+        print("obs:", obs)
+        return obs
 
     def _get_info(self):
-        return {
-            "sensors": self.simulation.sample_sensors().distances,
-            "speed": self.simulation.car_speed(),
-            "steering_angle": self.simulation.front_wheel_angle(),
-        }
+        obs = np.array(
+            list(self.simulation.sample_sensors().distances)
+            + [self.simulation.car_speed(), self.simulation.front_wheel_angle()],
+            dtype=np.float32
+        )
+        return obs
 
-    def reset(self, seed: Optional[int] = None):
-        super.reset(seed=seed)
+    def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
+        super().reset(seed=seed)
         self.simulation.reset()
-        self.renderer.reset()
 
         obs = self._get_obs()
         info = self._get_info()
@@ -97,6 +92,6 @@ class CarEnv(gym.Env):
         if action[3]:
             directions.add("right")
 
-        self.simulation.step(directions)
+        self.simulation.step(TIME_STEP, velocity_iterations=VELOCITY_ITERATIONS, position_iterations=POSITION_ITERATIONS, keys=directions)
 
-        return obs, info
+        return obs, 1, False, False, info
