@@ -54,6 +54,8 @@ def main() -> None:
         simulation.step(
             TIME_STEP, VELOCITY_ITERATIONS, POSITION_ITERATIONS, input_handler.active
         )
+        if simulation.car.crashed:
+            print("Car crashed!")
         renderer.draw(simulation)
         clock.tick(60)
 

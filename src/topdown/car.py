@@ -59,7 +59,8 @@ class Car:
         self.body.CreatePolygonFixture(vertices=self.vertices, density=density)
         self.body.userData = {"obj": self}
 
-        self.tires = [Tire(self.body, **tire_kwargs) for _ in range(4)]
+        self._crashed = False
+        self.tires = [Tire(self.body, car=self, **tire_kwargs) for _ in range(4)]
         self.joints: list[b2RevoluteJoint] = []
 
         for tire, anchor in zip(self.tires, self.tire_anchors):
@@ -128,6 +129,7 @@ class Car:
             joint.SetLimits(0.0, 0.0)
 
         self._set_front_wheel_angle(0.0)
+        self._crashed = False
 
     @property
     def forward_speed(self) -> float:
@@ -150,6 +152,16 @@ class Car:
             return
         for joint in self.joints[2:4]:
             joint.SetLimits(angle, angle)
+
+    @property
+    def crashed(self) -> bool:
+        return self._crashed
+
+    def mark_crashed(self) -> None:
+        self._crashed = True
+
+    def clear_crash(self) -> None:
+        self._crashed = False
 
 
 __all__ = ["Car"]

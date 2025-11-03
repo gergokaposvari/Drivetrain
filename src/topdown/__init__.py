@@ -2,7 +2,6 @@
 
 from .car import Car
 from .contact import TopDownContactListener
-from .gym_env import EnvironmentConfig, TopdownCarEnv
 from .ground import GroundArea
 from .input import InputHandler, InputMapping
 from .render import RenderConfig, Renderer

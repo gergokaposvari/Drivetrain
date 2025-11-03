@@ -139,7 +139,9 @@ class Simulation:
         boundary_points = list(self.track.boundary)
         if boundary_points[0] != boundary_points[-1]:
             boundary_points.append(boundary_points[0])
-        boundary_body = self.world.CreateStaticBody(position=(0.0, 0.0))
+        boundary_body = self.world.CreateStaticBody(
+            position=(0.0, 0.0), userData={"obj": "boundary"}
+        )
         boundary_body.CreateEdgeChain(boundary_points)
         transform = boundary_body.transform
         self._boundary_segments.clear()

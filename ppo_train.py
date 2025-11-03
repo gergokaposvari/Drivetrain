@@ -9,17 +9,21 @@ from stable_baselines3.common.env_checker import check_env
 ENV_ID = "CarGame-v2"
 
 gym.register(
-            id=ENV_ID,
-            entry_point="src.topdown.car_env:CarEnv",
-            max_episode_steps=500,
-        )
+    id=ENV_ID,
+    entry_point="src.topdown.car_env:CarEnv",
+    max_episode_steps=3500,
+)
 
-vec_env = make_vec_env(ENV_ID, n_envs=1, env_kwargs={})  # CarEnv ignores render_mode arg internally
+vec_env = make_vec_env(
+    ENV_ID,
+    n_envs=4,
+    env_kwargs={"render_mode": None},
+)
 
 
-# model = PPO("MlpPolicy", vec_env, verbose=1)
-# model.learn(total_timesteps=1000000)
-# model.save("ppo_topdown_car")
+model = PPO("MlpPolicy", vec_env, verbose=1)
+model.learn(total_timesteps=7000000, progress_bar=True)
+model.save("ppo_topdown_car")
 
 
 model = PPO.load("ppo_topdown_car")
@@ -34,8 +38,7 @@ while True:
             car_center = tuple(vec_env.envs[0].simulation.car.body.worldCenter)
         except Exception:
             car_center = None
-        print(f"[ppo_train] step={step} action={action} rewards={rewards} car_center={car_center}")
+        print(
+            f"[ppo_train] step={step} action={action} rewards={rewards} car_center={car_center}"
+        )
     step += 1
-
-
-

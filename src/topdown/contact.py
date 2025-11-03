@@ -8,6 +8,7 @@ from Box2D import (  # type: ignore import-untyped
 )
 
 from .ground import GroundArea
+from .car import Car
 from .tire import Tire
 
 
@@ -30,13 +31,26 @@ class TopDownContactListener(b2ContactListener):
             return
 
         tire: Tire | None = None
+        car: Car | None = None
         ground_area: GroundArea | None = None
+        boundary_contact = False
         for data in (data_a, data_b):
             obj = data.get("obj") if isinstance(data, dict) else None
             if isinstance(obj, Tire):
                 tire = obj
             elif isinstance(obj, GroundArea):
                 ground_area = obj
+            elif isinstance(obj, Car):
+                car = obj
+            elif obj == "boundary":
+                boundary_contact = True
+
+        if boundary_contact and began:
+            crash_target = car
+            if crash_target is None and tire is not None:
+                crash_target = getattr(tire, "car", None)
+            if crash_target is not None:
+                crash_target.mark_crashed()
 
         if tire is None or ground_area is None:
             return

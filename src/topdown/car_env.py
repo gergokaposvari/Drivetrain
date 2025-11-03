@@ -9,6 +9,7 @@ from src.topdown import LoadedTrack, load_track
 from src.topdown.input import InputHandler
 from src.topdown.render import RenderConfig, Renderer
 from src.topdown.simulation import Simulation
+
 # (Unused imports removed: Segment)
 from src.topdown.timing import TimingState
 
@@ -25,27 +26,43 @@ class CarEnv(gym.Env):
     and reuse a single Renderer. No lazy indirection like _ensure_renderer.
     """
 
-    metadata = {"render_modes": ("human", "rgb_array"), "render_fps": int(1.0 / TIME_STEP)}
+    metadata = {
+        "render_modes": ("human", "rgb_array"),
+        "render_fps": int(1.0 / TIME_STEP),
+    }
 
-    def __init__(self, render_mode: str = "human"):
+    def __init__(self, render_mode: str | None = "human"):
         super().__init__()
 
-        actual_track = load_track(Path(__file__).parent.parent.parent / "tracks" / "test_track.json")
+        actual_track = load_track(
+            Path(__file__).parent.parent.parent / "tracks" / "test_track.json"
+        )
         test_track = LoadedTrack(
             name="Test-track",
             path=Path(__file__).parent / "test_track.json",
             track=actual_track,
         )
 
+        if render_mode is None:
+            render_mode = "human"
+        if render_mode not in self.metadata["render_modes"]:
+            raise ValueError(f"Unsupported render_mode '{render_mode}'")
+        self.render_mode = render_mode
+
         pygame.init()
 
         config = RenderConfig(draw_sensor_rays=False)
-        screen = pygame.display.set_mode(config.screen_size)
-        pygame.display.set_caption("Top Down Car (pybox2d example)")
+        self._display_active = self.render_mode == "human"
 
-        self.render_mode = render_mode if render_mode in self.metadata["render_modes"] else "human"
+        if self._display_active:
+            screen = pygame.display.set_mode(config.screen_size)
+            pygame.display.set_caption("Top Down Car (pybox2d example)")
+            self.clock = pygame.time.Clock()
+        else:
+            screen = pygame.Surface(config.screen_size)
+            self.clock = None
+
         self.input_handler = InputHandler()
-        self.clock = pygame.time.Clock()
         self.simulation = Simulation(
             track=test_track.track if test_track else None,
             track_file=test_track.path if test_track else None,
@@ -56,14 +73,18 @@ class CarEnv(gym.Env):
         low = np.array([0, 0, 0, 0, 0, 0, 0, -20, -0.7], dtype=np.float32)
         high = np.array([150, 150, 150, 150, 150, 150, 150, 90, 0.7], dtype=np.float32)
 
-        self.observation_space = gym.spaces.Box(low=low, high=high, shape=(9,), dtype=np.float32)
+        self.observation_space = gym.spaces.Box(
+            low=low, high=high, shape=(9,), dtype=np.float32
+        )
         self.action_space = gym.spaces.Discrete(16)
+
+        self._last_info: dict | None = None
 
     def _get_obs(self):
         obs = np.array(
             list(self.simulation.sample_sensors().distances)
             + [self.simulation.car_speed(), self.simulation.front_wheel_angle()],
-            dtype=np.float32
+            dtype=np.float32,
         )
         obs = np.round(obs, 4)
         return obs
@@ -72,33 +93,40 @@ class CarEnv(gym.Env):
         obs = np.array(
             list(self.simulation.sample_sensors().distances)
             + [self.simulation.car_speed(), self.simulation.front_wheel_angle()],
-            dtype=np.float32
+            dtype=np.float32,
         )
         obs = np.round(obs, 4)
         return {"obs": obs}  # Dummy info for compatibility
 
-    def _get_reward(self, last_sectors: TimingState, current_sectors: TimingState) -> int:
+    def _get_reward(
+        self, last_sectors: TimingState, current_sectors: TimingState
+    ) -> int:
         reward = 0
-        
-        completed_sectors_this_turn = (
-            sum(s.completed for s in current_sectors.sector_statuses)
-            - sum(s.completed for s in last_sectors.sector_statuses)
-        )
 
-        faster_sectors_this_turn = (
-            sum(bool(s.faster) for s in current_sectors.sector_statuses)
-            - sum(bool(s.faster) for s in last_sectors.sector_statuses)
-        )
+        completed_sectors_this_turn = sum(
+            s.completed for s in current_sectors.sector_statuses
+        ) - sum(s.completed for s in last_sectors.sector_statuses)
+
+        faster_sectors_this_turn = sum(
+            bool(s.faster) for s in current_sectors.sector_statuses
+        ) - sum(bool(s.faster) for s in last_sectors.sector_statuses)
 
         reward += completed_sectors_this_turn * 100
         reward += faster_sectors_this_turn * 50
 
-        return reward
+        if all(tire.is_fully_on_grass for tire in self.simulation.car.tires):
+            reward = -2
 
+        if abs(self.simulation.car.forward_speed) < 1:
+            reward -= 1
+
+        return reward
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
         super().reset(seed=seed)
         self.simulation.reset()
+        if hasattr(self.simulation.car, "clear_crash"):
+            self.simulation.car.clear_crash()
         obs = self._get_obs()
         info = self._get_info()
         self._last_info = info
@@ -108,11 +136,11 @@ class CarEnv(gym.Env):
         if isinstance(action, (int, np.integer)):
             binary_action = [(action >> i) & 1 for i in range(4)]
             action = binary_action
-        elif hasattr(action, '__len__') and len(action) == 4:
+        elif hasattr(action, "__len__") and len(action) == 4:
             pass
 
         reward = 0
-        
+
         directions = set()
         if action[0]:
             directions.add("up")
@@ -126,7 +154,12 @@ class CarEnv(gym.Env):
 
         last_sectors = self.simulation.timing_state
 
-        self.simulation.step(TIME_STEP, velocity_iterations=VELOCITY_ITERATIONS, position_iterations=POSITION_ITERATIONS, keys=directions)
+        self.simulation.step(
+            TIME_STEP,
+            velocity_iterations=VELOCITY_ITERATIONS,
+            position_iterations=POSITION_ITERATIONS,
+            keys=directions,
+        )
 
         current_sectors = self.simulation.timing_state
         reward += self._get_reward(last_sectors, current_sectors)
@@ -134,27 +167,39 @@ class CarEnv(gym.Env):
         obs = self._get_obs()
         info = self._get_info()
         terminated = False  # No terminal condition defined yet
-        truncated = False   # No time limit enforcement here
+        truncated = False  # No time limit enforcement here
+
+        if self.simulation.car.crashed:
+            reward = -1000
+            terminated = True
         self._last_info = info
         return obs, reward, terminated, truncated, info
 
-    def render(self, mode: str = "human"):
-        if mode == "human":
+    def render(self, mode: str | None = None):
+        target_mode = mode or self.render_mode
+        if target_mode not in self.metadata["render_modes"]:
+            raise ValueError(f"Unsupported render mode: {target_mode}")
+
+        if target_mode == "human":
+            if not self._display_active and self.render_mode == "rgb_array":
+                # VecEnv may request 'human' even if we operate off-screen; provide frame.
+                return self.render("rgb_array")
             pygame.event.pump()
             self.renderer.draw(self.simulation)
-            self.clock.tick(60)
-            frame = pygame.surfarray.array3d(self.screen).transpose(1,0,2)
-            return frame
-        elif mode == "rgb_array":
-            # Offscreen array capture
+            if self.clock is not None:
+                self.clock.tick(self.metadata["render_fps"])
+            return None
+
+        if target_mode == "rgb_array":
             self.renderer.draw(self.simulation)
-            frame = pygame.surfarray.array3d(self.screen)  # (W,H,3)
-            return np.transpose(frame, (1, 0, 2))  # (H,W,3)
-        else:
-            raise ValueError(f"Unsupported render mode: {mode}")
+            frame = pygame.surfarray.array3d(self.screen)
+            return np.transpose(frame, (1, 0, 2))
+
+        raise ValueError(f"Unsupported render mode: {target_mode}")
 
     def close(self):
         """Clean up pygame resources."""
-        if pygame.get_init():
+        if self._display_active and pygame.display.get_init():
             pygame.display.quit()
+        if pygame.get_init():
             pygame.quit()
