@@ -5,11 +5,12 @@ import numpy as np
 from pathlib import Path
 from typing import Optional
 
-from src.topdown import LoadedTrack, TrackLoadError, discover_tracks, load_track
+from src.topdown import LoadedTrack, load_track
 from src.topdown.input import InputHandler
 from src.topdown.render import RenderConfig, Renderer
 from src.topdown.simulation import Simulation
-from src.topdown.sensors import Segment
+# (Unused imports removed: Segment)
+from src.topdown.timing import TimingState
 
 
 TIME_STEP = 1.0 / 60.0
@@ -18,7 +19,15 @@ POSITION_ITERATIONS = 2
 
 
 class CarEnv(gym.Env):
-    def __init__(self):
+    """Minimal Gym environment wrapper for the top-down car simulation.
+
+    Rendering logic kept simple: we eagerly create the display surface once
+    and reuse a single Renderer. No lazy indirection like _ensure_renderer.
+    """
+
+    metadata = {"render_modes": ("human", "rgb_array"), "render_fps": int(1.0 / TIME_STEP)}
+
+    def __init__(self, render_mode: str = "human"):
         super().__init__()
 
         actual_track = load_track(Path(__file__).parent.parent.parent / "tracks" / "test_track.json")
@@ -34,23 +43,21 @@ class CarEnv(gym.Env):
         screen = pygame.display.set_mode(config.screen_size)
         pygame.display.set_caption("Top Down Car (pybox2d example)")
 
+        self.render_mode = render_mode if render_mode in self.metadata["render_modes"] else "human"
         self.input_handler = InputHandler()
         self.clock = pygame.time.Clock()
         self.simulation = Simulation(
             track=test_track.track if test_track else None,
             track_file=test_track.path if test_track else None,
         )
-        self.renderer = Renderer(screen, config)
+        self.screen = screen
+        self.renderer = Renderer(self.screen, config)
 
         low = np.array([0, 0, 0, 0, 0, 0, 0, -20, -0.7], dtype=np.float32)
         high = np.array([150, 150, 150, 150, 150, 150, 150, 90, 0.7], dtype=np.float32)
 
         self.observation_space = gym.spaces.Box(low=low, high=high, shape=(9,), dtype=np.float32)
-        #  action_space[0] = acceleration,
-        #  action_space[1] = braking,
-        #  action_space[2] = steering left,
-        #  action_space[3] = steering right
-        self.action_space = gym.spaces.MultiBinary(4)
+        self.action_space = gym.spaces.Discrete(16)
 
     def _get_obs(self):
         obs = np.array(
@@ -58,7 +65,7 @@ class CarEnv(gym.Env):
             + [self.simulation.car_speed(), self.simulation.front_wheel_angle()],
             dtype=np.float32
         )
-        print("obs:", obs)
+        obs = np.round(obs, 4)
         return obs
 
     def _get_info(self):
@@ -67,24 +74,49 @@ class CarEnv(gym.Env):
             + [self.simulation.car_speed(), self.simulation.front_wheel_angle()],
             dtype=np.float32
         )
-        return obs
+        obs = np.round(obs, 4)
+        return {"obs": obs}  # Dummy info for compatibility
+
+    def _get_reward(self, last_sectors: TimingState, current_sectors: TimingState) -> int:
+        reward = 0
+        
+        completed_sectors_this_turn = (
+            sum(s.completed for s in current_sectors.sector_statuses)
+            - sum(s.completed for s in last_sectors.sector_statuses)
+        )
+
+        faster_sectors_this_turn = (
+            sum(bool(s.faster) for s in current_sectors.sector_statuses)
+            - sum(bool(s.faster) for s in last_sectors.sector_statuses)
+        )
+
+        reward += completed_sectors_this_turn * 100
+        reward += faster_sectors_this_turn * 50
+
+        return reward
+
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
         super().reset(seed=seed)
         self.simulation.reset()
-
         obs = self._get_obs()
         info = self._get_info()
-
+        self._last_info = info
         return obs, info
 
     def step(self, action):
-        obs = self._get_obs()
-        info = self._get_info()
+        if isinstance(action, (int, np.integer)):
+            binary_action = [(action >> i) & 1 for i in range(4)]
+            action = binary_action
+        elif hasattr(action, '__len__') and len(action) == 4:
+            pass
 
+        reward = 0
+        
         directions = set()
         if action[0]:
             directions.add("up")
+            reward += 1
         if action[1]:
             directions.add("down")
         if action[2]:
@@ -92,6 +124,37 @@ class CarEnv(gym.Env):
         if action[3]:
             directions.add("right")
 
+        last_sectors = self.simulation.timing_state
+
         self.simulation.step(TIME_STEP, velocity_iterations=VELOCITY_ITERATIONS, position_iterations=POSITION_ITERATIONS, keys=directions)
 
-        return obs, 1, False, False, info
+        current_sectors = self.simulation.timing_state
+        reward += self._get_reward(last_sectors, current_sectors)
+
+        obs = self._get_obs()
+        info = self._get_info()
+        terminated = False  # No terminal condition defined yet
+        truncated = False   # No time limit enforcement here
+        self._last_info = info
+        return obs, reward, terminated, truncated, info
+
+    def render(self, mode: str = "human"):
+        if mode == "human":
+            pygame.event.pump()
+            self.renderer.draw(self.simulation)
+            self.clock.tick(60)
+            frame = pygame.surfarray.array3d(self.screen).transpose(1,0,2)
+            return frame
+        elif mode == "rgb_array":
+            # Offscreen array capture
+            self.renderer.draw(self.simulation)
+            frame = pygame.surfarray.array3d(self.screen)  # (W,H,3)
+            return np.transpose(frame, (1, 0, 2))  # (H,W,3)
+        else:
+            raise ValueError(f"Unsupported render mode: {mode}")
+
+    def close(self):
+        """Clean up pygame resources."""
+        if pygame.get_init():
+            pygame.display.quit()
+            pygame.quit()
