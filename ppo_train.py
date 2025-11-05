@@ -22,23 +22,9 @@ vec_env = make_vec_env(
 
 
 model = PPO("MlpPolicy", vec_env, verbose=1)
-model.learn(total_timesteps=7000000, progress_bar=True)
-model.save("ppo_topdown_car")
-
-
-model = PPO.load("ppo_topdown_car")
-obs = vec_env.reset()
-step = 0
-while True:
-    action, _states = model.predict(obs, deterministic=True)
-    obs, rewards, dones, info = vec_env.step(action)
-    vec_env.render("human")
-    if step % 200 == 0:
-        try:
-            car_center = tuple(vec_env.envs[0].simulation.car.body.worldCenter)
-        except Exception:
-            car_center = None
-        print(
-            f"[ppo_train] step={step} action={action} rewards={rewards} car_center={car_center}"
-        )
-    step += 1
+# model.learn(total_timesteps=7000000, progress_bar=True)
+# model.save("ppo_topdown_car")
+#
+# model = PPO.load("ppo_topdown_car_new_reward", vec_env)
+model.learn(total_timesteps=15000000, reset_num_timesteps=False, progress_bar=True)
+model.save("charles_leclerc")

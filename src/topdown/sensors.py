@@ -14,7 +14,17 @@ Segment = Tuple[Vec2, Vec2]
 class RaycastConfig:
     """Configuration for the raycast sensor suite."""
 
-    angles_deg: Sequence[float] = (-60.0, -30.0, -15.0, 0.0, 15.0, 30.0, 60.0)
+    angles_deg: Sequence[float] = (
+        -90.0,
+        -60.0,
+        -30.0,
+        -15.0,
+        0.0,
+        15.0,
+        30.0,
+        60.0,
+        90.0,
+    )
     max_distance: float = 150.0
 
 
@@ -101,7 +111,9 @@ def _normalize(vec: Vec2, *, default: Vec2) -> Vec2:
     return vec[0] / length, vec[1] / length
 
 
-def _ray_segment_distance(origin: Vec2, direction: Vec2, segment: Segment) -> float | None:
+def _ray_segment_distance(
+    origin: Vec2, direction: Vec2, segment: Segment
+) -> float | None:
     px, py = origin
     dx, dy = direction
     (ax, ay), (bx, by) = segment

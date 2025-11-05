@@ -35,7 +35,7 @@ class CarEnv(gym.Env):
         super().__init__()
 
         actual_track = load_track(
-            Path(__file__).parent.parent.parent / "tracks" / "test_track.json"
+            Path(__file__).parent.parent.parent / "tracks" / "training_track.json"
         )
         test_track = LoadedTrack(
             name="Test-track",
@@ -70,11 +70,13 @@ class CarEnv(gym.Env):
         self.screen = screen
         self.renderer = Renderer(self.screen, config)
 
-        low = np.array([0, 0, 0, 0, 0, 0, 0, -20, -0.7], dtype=np.float32)
-        high = np.array([150, 150, 150, 150, 150, 150, 150, 90, 0.7], dtype=np.float32)
+        low = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, -20, -0.7], dtype=np.float32)
+        high = np.array(
+            [150, 150, 150, 150, 150, 150, 150, 150, 150, 90, 0.7], dtype=np.float32
+        )
 
         self.observation_space = gym.spaces.Box(
-            low=low, high=high, shape=(9,), dtype=np.float32
+            low=low, high=high, shape=(11,), dtype=np.float32
         )
         self.action_space = gym.spaces.Discrete(16)
 
@@ -96,7 +98,18 @@ class CarEnv(gym.Env):
             dtype=np.float32,
         )
         obs = np.round(obs, 4)
-        return {"obs": obs}  # Dummy info for compatibility
+        return {"obs": obs}
+
+    def _normalize_to_int(self, value: float) -> int:
+        src_min, src_max = -20, 90
+        dst_min, dst_max = -4, 3
+
+        value = max(src_min, min(value, src_max))
+
+        normalized = (value - src_min) / (src_max - src_min)
+        mapped = dst_min + normalized * (dst_max - dst_min)
+
+        return int(round(mapped))
 
     def _get_reward(
         self, last_sectors: TimingState, current_sectors: TimingState
@@ -111,14 +124,10 @@ class CarEnv(gym.Env):
             bool(s.faster) for s in current_sectors.sector_statuses
         ) - sum(bool(s.faster) for s in last_sectors.sector_statuses)
 
-        reward += completed_sectors_this_turn * 100
-        reward += faster_sectors_this_turn * 50
+        reward += completed_sectors_this_turn * 1000
+        reward += faster_sectors_this_turn * 5000
 
-        if all(tire.is_fully_on_grass for tire in self.simulation.car.tires):
-            reward = -2
-
-        if abs(self.simulation.car.forward_speed) < 1:
-            reward -= 1
+        reward += self._normalize_to_int(self.simulation.car.forward_speed)
 
         return reward
 
@@ -144,7 +153,6 @@ class CarEnv(gym.Env):
         directions = set()
         if action[0]:
             directions.add("up")
-            reward += 1
         if action[1]:
             directions.add("down")
         if action[2]:
@@ -170,8 +178,10 @@ class CarEnv(gym.Env):
         truncated = False  # No time limit enforcement here
 
         if self.simulation.car.crashed:
-            reward = -1000
+            reward = -2300
             terminated = True
+        if all(tire.is_fully_on_grass for tire in self.simulation.car.tires):
+            reward = -20
         self._last_info = info
         return obs, reward, terminated, truncated, info
 
