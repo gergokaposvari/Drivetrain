@@ -1,4 +1,5 @@
 import gymnasium as gym
+from mpmath import cos
 import pygame
 import numpy as np
 
@@ -35,7 +36,7 @@ class CarEnv(gym.Env):
         super().__init__()
 
         actual_track = load_track(
-            Path(__file__).parent.parent.parent / "tracks" / "training_track.json"
+            Path(__file__).parent.parent.parent / "tracks" / "simple.json"
         )
         test_track = LoadedTrack(
             name="Test-track",
@@ -56,7 +57,7 @@ class CarEnv(gym.Env):
 
         if self._display_active:
             screen = pygame.display.set_mode(config.screen_size)
-            pygame.display.set_caption("Top Down Car (pybox2d example)")
+            pygame.display.set_caption("Top Down Car")
             self.clock = pygame.time.Clock()
         else:
             screen = pygame.Surface(config.screen_size)
@@ -70,25 +71,75 @@ class CarEnv(gym.Env):
         self.screen = screen
         self.renderer = Renderer(self.screen, config)
 
-        low = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, -20, -0.7], dtype=np.float32)
+        low = np.array(
+            [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                -20,
+                -0.7,
+                -1,
+                -1,
+                0,
+            ],
+            dtype=np.float32,
+        )
         high = np.array(
-            [150, 150, 150, 150, 150, 150, 150, 150, 150, 90, 0.7], dtype=np.float32
+            [
+                150,
+                150,
+                150,
+                150,
+                150,
+                150,
+                150,
+                150,
+                150,
+                150,
+                90,
+                0.7,
+                1,
+                1,
+                4,
+            ],
+            dtype=np.float32,
         )
 
         self.observation_space = gym.spaces.Box(
-            low=low, high=high, shape=(11,), dtype=np.float32
+            low=low, high=high, shape=(15,), dtype=np.float32
         )
-        self.action_space = gym.spaces.Discrete(16)
+        self.action_space = gym.spaces.Box(
+            low=np.array([-1, 0.2]),
+            high=np.array([1, 1]),
+            shape=(2,),
+            dtype=np.float32,
+        )
 
         self._last_info: dict | None = None
 
     def _get_obs(self):
+        tires_on_grass = sum(
+            1 for tire in self.simulation.car.tires if tire.is_fully_on_grass
+        )
+        unit_car_to_sector = self.unit_vector(self.simulation.vector_car_to_sector)
         obs = np.array(
             list(self.simulation.sample_sensors().distances)
-            + [self.simulation.car_speed(), self.simulation.front_wheel_angle()],
+            + [
+                self.simulation.car_speed(),
+                self.simulation.front_wheel_angle(),
+                unit_car_to_sector.x,
+                unit_car_to_sector.y,
+                tires_on_grass,
+            ],
             dtype=np.float32,
         )
-        obs = np.round(obs, 4)
         return obs
 
     def _get_info(self):
@@ -97,12 +148,11 @@ class CarEnv(gym.Env):
             + [self.simulation.car_speed(), self.simulation.front_wheel_angle()],
             dtype=np.float32,
         )
-        obs = np.round(obs, 4)
         return {"obs": obs}
 
     def _normalize_to_int(self, value: float) -> int:
         src_min, src_max = -20, 90
-        dst_min, dst_max = -4, 3
+        dst_min, dst_max = -1, 2
 
         value = max(src_min, min(value, src_max))
 
@@ -111,25 +161,52 @@ class CarEnv(gym.Env):
 
         return int(round(mapped))
 
+    def unit_vector(self, vector):
+        """Returns the unit vector of the vector."""
+        return vector / np.linalg.norm(vector)
+
+    def angle_between(self, v1, v2):
+        """Returns the angle in radians between vectors 'v1' and 'v2'"""
+        v1_u = self.unit_vector(v1)
+        v2_u = self.unit_vector(v2)
+        return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
+
     def _get_reward(
-        self, last_sectors: TimingState, current_sectors: TimingState
-    ) -> int:
-        reward = 0
+        self,
+    ) -> tuple[float, bool]:
+        reward: float = 0.0
+        terminated: bool = False
 
-        completed_sectors_this_turn = sum(
-            s.completed for s in current_sectors.sector_statuses
-        ) - sum(s.completed for s in last_sectors.sector_statuses)
+        tires_on_grass = sum(
+            1 for tire in self.simulation.car.tires if tire.is_fully_on_grass
+        )
 
-        faster_sectors_this_turn = sum(
-            bool(s.faster) for s in current_sectors.sector_statuses
-        ) - sum(bool(s.faster) for s in last_sectors.sector_statuses)
+        if tires_on_grass == 4:
+            reward = -10.0
+            terminated = True
+            return reward, terminated
 
-        reward += completed_sectors_this_turn * 1000
-        reward += faster_sectors_this_turn * 5000
+        #       completed_sectors_this_turn = sum(
+        #           s.completed for s in current_sectors.sector_statuses
+        #       ) - sum(s.completed for s in last_sectors.sector_statuses)
+        #
+        #       faster_sectors_this_turn = sum(
+        #           bool(s.faster) for s in current_sectors.sector_statuses
+        #       ) - sum(bool(s.faster) for s in last_sectors.sector_statuses)
+        #
+        #       reward += completed_sectors_this_turn * 100.0
+        #       reward += faster_sectors_this_turn * 150.0
+        #
+        v = self.simulation.car.forward_speed
+        alpha = self.angle_between(
+            self.simulation.car.forward_vector,
+            self.simulation.vector_between_sectors(0),
+        )
+        distance = np.clip(self.simulation.distance_to_spline / 25, 0, 1)
 
-        reward += self._normalize_to_int(self.simulation.car.forward_speed)
+        reward = float(v * (cos(alpha) - distance))
 
-        return reward
+        return reward, terminated
 
     def reset(self, seed: Optional[int] = None, options: Optional[dict] = None):
         super().reset(seed=seed)
@@ -142,46 +219,24 @@ class CarEnv(gym.Env):
         return obs, info
 
     def step(self, action):
-        if isinstance(action, (int, np.integer)):
-            binary_action = [(action >> i) & 1 for i in range(4)]
-            action = binary_action
-        elif hasattr(action, "__len__") and len(action) == 4:
-            pass
-
         reward = 0
 
-        directions = set()
-        if action[0]:
-            directions.add("up")
-        if action[1]:
-            directions.add("down")
-        if action[2]:
-            directions.add("left")
-        if action[3]:
-            directions.add("right")
-
-        last_sectors = self.simulation.timing_state
+        self.simulation.car.steering_input = float(action[0])
+        self.simulation.car.throttle_input = float(action[1])
 
         self.simulation.step(
             TIME_STEP,
             velocity_iterations=VELOCITY_ITERATIONS,
             position_iterations=POSITION_ITERATIONS,
-            keys=directions,
+            keys=None,
         )
-
-        current_sectors = self.simulation.timing_state
-        reward += self._get_reward(last_sectors, current_sectors)
 
         obs = self._get_obs()
         info = self._get_info()
         terminated = False  # No terminal condition defined yet
         truncated = False  # No time limit enforcement here
 
-        if self.simulation.car.crashed:
-            reward = -2300
-            terminated = True
-        if all(tire.is_fully_on_grass for tire in self.simulation.car.tires):
-            reward = -20
+        reward, terminated = self._get_reward()
         self._last_info = info
         return obs, reward, terminated, truncated, info
 

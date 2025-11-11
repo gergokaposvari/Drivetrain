@@ -24,6 +24,7 @@ class RaycastConfig:
         30.0,
         60.0,
         90.0,
+        180.0,
     )
     max_distance: float = 150.0
 

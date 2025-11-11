@@ -18,6 +18,7 @@ class TopDownContactListener(b2ContactListener):
     def __init__(self, callback=None) -> None:
         super().__init__()
         self._callback = callback
+        self._contact_counts: dict[tuple[Tire, GroundArea], int] = {}
 
     def _handle_contact(self, contact: b2Contact, began: bool) -> None:
         fixture_a = contact.fixtureA
@@ -55,12 +56,24 @@ class TopDownContactListener(b2ContactListener):
         if tire is None or ground_area is None:
             return
 
+        key = (tire, ground_area)
+        state_changed = False
         if began:
-            tire.add_ground_area(ground_area)
+            count = self._contact_counts.get(key, 0) + 1
+            self._contact_counts[key] = count
+            if count == 1:
+                tire.add_ground_area(ground_area)
+                state_changed = True
         else:
-            tire.remove_ground_area(ground_area)
+            count = self._contact_counts.get(key, 0)
+            if count <= 1:
+                self._contact_counts.pop(key, None)
+                tire.remove_ground_area(ground_area)
+                state_changed = True
+            else:
+                self._contact_counts[key] = count - 1
 
-        if self._callback is not None:
+        if state_changed and self._callback is not None:
             self._callback(tire, ground_area, began)
 
     def BeginContact(self, contact: b2Contact) -> None:  # noqa: N802

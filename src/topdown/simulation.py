@@ -84,7 +84,7 @@ class Simulation:
         time_step: float,
         velocity_iterations: int,
         position_iterations: int,
-        keys: Set[str],
+        keys: Set[str] | None,
     ) -> None:
         hz = 1.0 / time_step if time_step > 0 else 60.0
         self.car.update(keys, hz)
@@ -92,7 +92,12 @@ class Simulation:
         self.world.ClearForces()
 
         if self._timing is not None:
-            self._timing.update(time_step, bool(keys), tuple(self.car.body.position))
+            analog_active = (
+                abs(self.car.throttle_input) > 1e-3
+                or abs(self.car.steering_input) > 1e-3
+            )
+            has_input = bool(keys) or analog_active
+            self._timing.update(time_step, has_input, tuple(self.car.body.position))
 
     def reset(
         self,
@@ -246,6 +251,47 @@ class Simulation:
         return math.atan2(-dx, dy)
 
     @property
+    def vector_car_to_sector(self) -> b2Vec2:
+        idx = self._timing._current_segment_index
+        if idx >= len(self.track.control_points) - 1:
+            target = self.track.control_points[0]
+        else:
+            target = self.track.control_points[idx + 1]
+        car = self.car.body.position
+        return b2Vec2(target[0] - car.x, target[1] - car.y)
+
+    def vector_between_sectors(self, offset: int) -> b2Vec2:
+        control_points = self.track.control_points
+        n_points = len(control_points)
+
+        idx = self._timing._current_segment_index + offset
+
+        current_idx = idx % n_points
+
+        next_idx = (idx + 1) % n_points
+
+        current = control_points[current_idx]
+        next_pt = control_points[next_idx]  # Renamed to avoid shadowing 'next' keyword
+
+        return b2Vec2(next_pt[0] - current[0], next_pt[1] - current[1])
+
+    @property
+    def distance_to_spline(self) -> float:
+        if not self.track.control_points:
+            return 0.0
+        car_pos = (self.car.body.position.x, self.car.body.position.y)
+        min_dist = float("inf")
+        points = self.track.control_points
+        count = len(points)
+        for i in range(count):
+            start = points[i]
+            end = points[(i + 1) % count]
+            dist = _point_segment_distance(car_pos, start, end)
+            if dist < min_dist:
+                min_dist = dist
+        return min_dist
+
+    @property
     def timing_state(self) -> TimingState | None:
         return self._timing.state if self._timing is not None else None
 
@@ -285,3 +331,19 @@ def _edge_key(
 
 
 __all__ = ["Simulation"]
+
+
+def _point_segment_distance(point: Vec2, start: Vec2, end: Vec2) -> float:
+    px, py = point
+    sx, sy = start
+    ex, ey = end
+    dx = ex - sx
+    dy = ey - sy
+    seg_len_sq = dx * dx + dy * dy
+    if seg_len_sq == 0:
+        return math.hypot(px - sx, py - sy)
+    t = ((px - sx) * dx + (py - sy) * dy) / seg_len_sq
+    t = max(0.0, min(1.0, t))
+    proj_x = sx + t * dx
+    proj_y = sy + t * dy
+    return math.hypot(px - proj_x, py - proj_y)

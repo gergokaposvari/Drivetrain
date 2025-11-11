@@ -2,7 +2,7 @@ from src.topdown.car_env import CarEnv
 
 import gymnasium as gym
 
-from stable_baselines3 import PPO
+from stable_baselines3 import PPO, SAC
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.env_checker import check_env
 
@@ -21,7 +21,7 @@ vec_env = make_vec_env(
 )
 
 
-model = PPO.load("charles_leclerc")
+model = PPO.load("dist_to_sector_PPO")
 obs = vec_env.reset()
 step = 0
 while True:

@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 import pygame
+from torch._inductor.remote_cache import Sample
 
 from src.topdown import LoadedTrack, TrackLoadError, discover_tracks, load_track
 from src.topdown.input import InputHandler
@@ -54,6 +55,7 @@ def main() -> None:
         simulation.step(
             TIME_STEP, VELOCITY_ITERATIONS, POSITION_ITERATIONS, input_handler.active
         )
+        print(f"Distance to sector: {simulation.vector_car_to_sector.length:.2f}")
         if simulation.car.crashed:
             print("Car crashed!")
         renderer.draw(simulation)
