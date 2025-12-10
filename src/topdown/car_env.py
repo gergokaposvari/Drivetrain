@@ -1,10 +1,10 @@
-import gymnasium as gym
-from mpmath import cos
-import pygame
-import numpy as np
-
 from pathlib import Path
 from typing import Optional
+
+import gymnasium as gym
+import numpy as np
+import pygame
+from mpmath import cos
 
 from src.topdown import LoadedTrack, load_track
 from src.topdown.input import InputHandler
@@ -13,7 +13,6 @@ from src.topdown.simulation import Simulation
 
 # (Unused imports removed: Segment)
 from src.topdown.timing import TimingState
-
 
 TIME_STEP = 1.0 / 60.0
 VELOCITY_ITERATIONS = 6
@@ -148,7 +147,23 @@ class CarEnv(gym.Env):
             + [self.simulation.car_speed(), self.simulation.front_wheel_angle()],
             dtype=np.float32,
         )
-        return {"obs": obs}
+        timing_state = self.simulation.timing_state
+        timing_info = {
+            "current_time": timing_state.current_time,
+            "last_lap_time": timing_state.last_lap_time,
+            "best_lap_time": timing_state.best_lap_time,
+            "sector_times": [s.current_time for s in timing_state.sector_statuses],
+            "sector_best": [s.best_time for s in timing_state.sector_statuses],
+            "sector_completed": [s.completed for s in timing_state.sector_statuses],
+        }
+        telemetry = {
+            "speed": float(self.simulation.car_speed()),
+            "wheel_angle": float(self.simulation.front_wheel_angle()),
+            "throttle": float(self.simulation.car.throttle_input),
+            "brake": float(max(0.0, -self.simulation.car.throttle_input)),
+            "steer": float(self.simulation.car.steering_input),
+        }
+        return {"obs": obs, "timing": timing_info, "telemetry": telemetry}
 
     def _normalize_to_int(self, value: float) -> int:
         src_min, src_max = -20, 90
