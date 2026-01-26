@@ -1,18 +1,16 @@
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import gymnasium as gym
 import numpy as np
-import pygame
-from mpmath import cos
 
 from src.topdown import LoadedTrack, load_track
-from src.topdown.input import InputHandler
-from src.topdown.render import RenderConfig, Renderer
 from src.topdown.simulation import Simulation
 
-# (Unused imports removed: Segment)
-from src.topdown.timing import TimingState
+if TYPE_CHECKING:
+    import pygame
+
+    from src.topdown.render import RenderConfig, Renderer
 
 TIME_STEP = 1.0 / 60.0
 VELOCITY_ITERATIONS = 6
@@ -22,8 +20,8 @@ POSITION_ITERATIONS = 2
 class CarEnv(gym.Env):
     """Minimal Gym environment wrapper for the top-down car simulation.
 
-    Rendering logic kept simple: we eagerly create the display surface once
-    and reuse a single Renderer. No lazy indirection like _ensure_renderer.
+    Rendering is optional and only initialized when a render mode is requested,
+    so headless training avoids pygame overhead.
     """
 
     metadata = {
@@ -43,32 +41,23 @@ class CarEnv(gym.Env):
             track=actual_track,
         )
 
-        if render_mode is None:
-            render_mode = "human"
-        if render_mode not in self.metadata["render_modes"]:
+        if render_mode is not None and render_mode not in self.metadata["render_modes"]:
             raise ValueError(f"Unsupported render_mode '{render_mode}'")
         self.render_mode = render_mode
 
-        pygame.init()
+        self._pygame: Optional["pygame"] = None
+        self._display_active = False
+        self.screen: Optional["pygame.Surface"] = None
+        self.renderer: Optional["Renderer"] = None
+        self.clock: Optional["pygame.time.Clock"] = None
 
-        config = RenderConfig(draw_sensor_rays=False)
-        self._display_active = self.render_mode == "human"
-
-        if self._display_active:
-            screen = pygame.display.set_mode(config.screen_size)
-            pygame.display.set_caption("Top Down Car")
-            self.clock = pygame.time.Clock()
-        else:
-            screen = pygame.Surface(config.screen_size)
-            self.clock = None
-
-        self.input_handler = InputHandler()
         self.simulation = Simulation(
             track=test_track.track if test_track else None,
             track_file=test_track.path if test_track else None,
         )
-        self.screen = screen
-        self.renderer = Renderer(self.screen, config)
+
+        if self.render_mode is not None:
+            self._init_render(self.render_mode)
 
         low = np.array(
             [
@@ -121,7 +110,28 @@ class CarEnv(gym.Env):
             dtype=np.float32,
         )
 
-        self._last_info: dict | None = None
+    def _init_render(self, target_mode: str) -> None:
+        import pygame
+
+        from src.topdown.render import RenderConfig, Renderer
+
+        self._pygame = pygame
+        self.render_mode = target_mode
+        pygame.init()
+
+        config = RenderConfig(draw_sensor_rays=False)
+        self._display_active = target_mode == "human"
+
+        if self._display_active:
+            screen = pygame.display.set_mode(config.screen_size)
+            pygame.display.set_caption("Top Down Car")
+            self.clock = pygame.time.Clock()
+        else:
+            screen = pygame.Surface(config.screen_size)
+            self.clock = None
+
+        self.screen = screen
+        self.renderer = Renderer(self.screen, config)
 
     def _get_obs(self):
         tires_on_grass = sum(
@@ -140,30 +150,6 @@ class CarEnv(gym.Env):
             dtype=np.float32,
         )
         return obs
-
-    def _get_info(self):
-        obs = np.array(
-            list(self.simulation.sample_sensors().distances)
-            + [self.simulation.car_speed(), self.simulation.front_wheel_angle()],
-            dtype=np.float32,
-        )
-        timing_state = self.simulation.timing_state
-        timing_info = {
-            "current_time": timing_state.current_time,
-            "last_lap_time": timing_state.last_lap_time,
-            "best_lap_time": timing_state.best_lap_time,
-            "sector_times": [s.current_time for s in timing_state.sector_statuses],
-            "sector_best": [s.best_time for s in timing_state.sector_statuses],
-            "sector_completed": [s.completed for s in timing_state.sector_statuses],
-        }
-        telemetry = {
-            "speed": float(self.simulation.car_speed()),
-            "wheel_angle": float(self.simulation.front_wheel_angle()),
-            "throttle": float(self.simulation.car.throttle_input),
-            "brake": float(max(0.0, -self.simulation.car.throttle_input)),
-            "steer": float(self.simulation.car.steering_input),
-        }
-        return {"obs": obs, "timing": timing_info, "telemetry": telemetry}
 
     def _normalize_to_int(self, value: float) -> int:
         src_min, src_max = -20, 90
@@ -219,7 +205,7 @@ class CarEnv(gym.Env):
         )
         distance = np.clip(self.simulation.distance_to_spline / 25, 0, 1)
 
-        reward = float(v * (cos(alpha) - distance))
+        reward = float(v * (np.cos(alpha) - distance))
 
         return reward, terminated
 
@@ -229,9 +215,7 @@ class CarEnv(gym.Env):
         if hasattr(self.simulation.car, "clear_crash"):
             self.simulation.car.clear_crash()
         obs = self._get_obs()
-        info = self._get_info()
-        self._last_info = info
-        return obs, info
+        return obs, {}
 
     def step(self, action):
         reward = 0
@@ -247,18 +231,25 @@ class CarEnv(gym.Env):
         )
 
         obs = self._get_obs()
-        info = self._get_info()
         terminated = False  # No terminal condition defined yet
         truncated = False  # No time limit enforcement here
 
         reward, terminated = self._get_reward()
-        self._last_info = info
-        return obs, reward, terminated, truncated, info
+        return obs, reward, terminated, truncated, {}
 
     def render(self, mode: str | None = None):
         target_mode = mode or self.render_mode
+        if target_mode is None:
+            return None
         if target_mode not in self.metadata["render_modes"]:
             raise ValueError(f"Unsupported render mode: {target_mode}")
+
+        if self.renderer is None or self._pygame is None:
+            self._init_render(target_mode)
+
+        pygame = self._pygame
+        if pygame is None or self.renderer is None or self.screen is None:
+            raise RuntimeError("Renderer not initialized")
 
         if target_mode == "human":
             if not self._display_active and self.render_mode == "rgb_array":
@@ -279,7 +270,14 @@ class CarEnv(gym.Env):
 
     def close(self):
         """Clean up pygame resources."""
-        if self._display_active and pygame.display.get_init():
-            pygame.display.quit()
-        if pygame.get_init():
-            pygame.quit()
+        if self._pygame is None:
+            return
+        if self._display_active and self._pygame.display.get_init():
+            self._pygame.display.quit()
+        if self._pygame.get_init():
+            self._pygame.quit()
+        self._pygame = None
+        self.renderer = None
+        self.screen = None
+        self.clock = None
+        self._display_active = False
