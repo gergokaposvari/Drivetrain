@@ -22,7 +22,7 @@ vec_env = make_vec_env(
 )
 
 
-model = SAC.load("dist_to_sector_sb3_sac")
+model = SAC.load("models/dist_to_sector_sb3_sac")
 obs = vec_env.reset()
 
 print("Starting simulation... Waiting for first lap completion.")
@@ -45,30 +45,6 @@ while True:
     action, _states = model.predict(obs, deterministic=True)
     obs, rewards, dones, infos = vec_env.step(action)
     vec_env.render("human")
-
-    info = infos[0]
-
-    # Check initial lap time state once
-    if not initial_lap_time_checked:
-        last_lap_time = info["timing"]["last_lap_time"]
-        initial_lap_time_checked = True
-
-    current_lap_time = info["timing"]["last_lap_time"]
-
-    # Collect telemetry
-    telemetry = info.get("telemetry", {})
-    telemetry_data["speed"].append(telemetry.get("speed", 0))
-    telemetry_data["wheel_angle"].append(telemetry.get("wheel_angle", 0))
-    telemetry_data["throttle"].append(telemetry.get("throttle", 0))
-    # telemetry_data["brake"].append(telemetry.get("brake", 0))
-
-    # Check for lap completion
-    # A lap is completed if current_lap_time is valid and different from the last known state (which should be None or old lap)
-    # Since we want the *first* lap of this run, and we reset on crash, we expect transition from None -> Value.
-
-    if current_lap_time is not None and current_lap_time != last_lap_time:
-        print(f"Lap completed! Time: {current_lap_time:.3f}s")
-        break
 
     # If crash/reset occurs, clear data
     if dones[0]:
@@ -148,5 +124,5 @@ axs[3].set_xlabel("Step")
 axs[3].legend(loc="upper right")
 axs[3].grid(True)
 plt.tight_layout()
-print("Saving plot to lap_telemetry.png...")
-plt.savefig("lap_telemetry.png")
+print("Saving plot to docs/lap_telemetry.png...")
+plt.savefig("docs/lap_telemetry.png")

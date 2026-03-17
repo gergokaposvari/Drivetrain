@@ -12,3 +12,9 @@ wheels/
 .cache/
 .uvcache/
 .fontconfig_cache/
+
+# macOS
+.DS_Store
+
+# Training artifacts
+runs/

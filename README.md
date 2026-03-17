@@ -1,81 +1,153 @@
-# Top-Down Car Sandbox
+# Drivetrain
 
-This project wraps the pybox2d top-down car example into a small pygame sandbox. You can choose from bundled circuits or describe new ones with a smooth centerline spline.
+A top-down car driving simulator with realistic Box2D tire physics, built as a reinforcement learning sandbox. Train a SAC agent to drive a circuit autonomously, or take the wheel yourself.
 
-## Running the demo
+![Agent telemetry over one completed lap](docs/lap_telemetry.png)
+
+## Features
+
+- **Realistic physics** — four-wheel drive model with lateral/longitudinal tire friction, surface traction, and smooth steering interpolation
+- **RL-ready gymnasium environment** — 15-dim observation space, continuous action space, reward shaped around heading and centerline distance
+- **SAC training** — trains with Stable Baselines3 across 4 parallel environments; ROCm/AMD GPU support out of the box
+- **Spline-based track system** — define circuits as Catmull-Rom control points; the engine builds Box2D polygon meshes automatically
+- **Interactive track editor** — sketch new circuits by clicking control points with a live preview
+- **Lap timing** — per-sector splits, best-lap tracking, and HUD display
+
+## Installation
+
+Requires Python 3.12+ and [`uv`](https://github.com/astral-sh/uv).
 
 ```bash
-uv run python main.py --list-tracks     # show bundled layouts
-uv run python main.py --track default   # run the default course
-uv run python main.py --track classic_loop
+git clone https://github.com/gergokaposvari/Drivetrain
+cd Drivetrain
+uv sync
 ```
 
-Any `.json` file in the `tracks/` directory is discovered at startup. You can also pass an absolute path with `--track /path/to/track.json`.
+## Usage
 
-## Interactive Track Editor
-
-Sketch a new circuit by placing spline control points:
+### Drive it yourself
 
 ```bash
-uv run python -m src.editor.track_editor --output tracks/my_new_track.json
+uv run python main.py --track simple        # drive a bundled track
+uv run python main.py --list-tracks         # show all available tracks
+uv run python main.py --show-sensors        # visualise the 7 raycast sensors
 ```
 
-- Left click adds a control point (width defaults to 20 m).
-- Right click (or `Z`) removes the last point.
-- Press `S` to save once you have at least four points.
-- The preview updates in real time—tweak widths later directly in the JSON file if needed.
+### Train an agent
 
-## Authoring tracks with splines
+```bash
+uv run python ppo_train.py
+```
 
-Define the track centreline with a sequence of control points and matching widths:
+Trains a SAC agent for 1 M timesteps across 4 parallel environments. The model is saved to `dist_to_sector_sb3_sac.zip`.
+
+### Watch the trained agent
+
+```bash
+uv run python ppo_agent_plays.py
+```
+
+Loads the saved model, renders a lap, and writes `lap_telemetry.png` with speed, steering, and throttle traces.
+
+### Build a new track
+
+```bash
+uv run python -m src.editor.track_editor --output tracks/my_track.json
+```
+
+- **Left click** — add a control point (default width: 20 m)
+- **Right click / Z** — remove the last point
+- **S** — save (requires ≥ 4 points)
+
+Tweak widths afterwards by editing the JSON directly.
+
+## RL Environment
+
+| | |
+|---|---|
+| **Observation** (15-dim) | 10 raycast distances (0–150 m) + speed, wheel angle, next-sector unit vector (x, y), tyres on grass |
+| **Action** (2-dim) | steering ∈ [−1, 1], throttle ∈ [0.2, 1] |
+| **Reward** | `v × (cos α − d)` where `v` = forward speed, `α` = heading error, `d` = normalised centreline distance |
+| **Termination** | all 4 tyres on grass → −10 reward |
+| **Episode cap** | 3 000 steps |
+
+### Network architecture (SAC)
+
+```mermaid
+graph TD
+    subgraph Actor["Actor Network (Policy)"]
+        direction TB
+        A_Input[("Input: Observation (15)")]
+        A_H1["Hidden Layer 1 (Linear 256 + ReLU)"]
+        A_H2["Hidden Layer 2 (Linear 256 + ReLU)"]
+        subgraph Heads["Output Heads"]
+            A_Mean["Mean μ (2)"]
+            A_Std["Log Std σ (2)"]
+        end
+        A_Sample(Gaussian Sampling)
+        A_Tanh(Tanh Activation)
+        A_Out[("Output: Action (2) — Throttle, Steering")]
+        A_Input --> A_H1 --> A_H2 --> A_Mean --> A_Sample
+        A_H2 --> A_Std --> A_Sample --> A_Tanh --> A_Out
+    end
+
+    subgraph Critic["Critic Network (Q-Function)"]
+        direction TB
+        C_InputObs[("Input: Observation (15)")]
+        C_InputAct[("Input: Action (2)")]
+        C_Concat{Concatenate (17)}
+        C_H1["Hidden Layer 1 (Linear 256 + ReLU)"]
+        C_H2["Hidden Layer 2 (Linear 256 + ReLU)"]
+        C_Out[("Output: Q-Value (1)")]
+        C_InputObs --> C_Concat
+        C_InputAct --> C_Concat
+        C_Concat --> C_H1 --> C_H2 --> C_Out
+    end
+```
+
+## Track format
+
+Tracks are JSON files in `tracks/`. The spline format:
 
 ```json
 {
   "spawn_point": [-150.0, -70.0],
   "spawn_direction": [0.83, 0.55],
   "control_points": [
-    [-150.0, -70.0],
-    [-40.0, -120.0],
-    [70.0, -90.0],
-    [130.0, 0.0],
-    [60.0, 90.0],
-    [-40.0, 100.0],
-    [-140.0, 40.0],
-    [-180.0, -40.0]
+    [-150.0, -70.0], [-40.0, -120.0], [70.0, -90.0],
+    [130.0, 0.0],   [60.0, 90.0],   [-40.0, 100.0],
+    [-140.0, 40.0], [-180.0, -40.0]
   ],
-  "widths": [
-    60.0,
-    60.0,
-    50.0,
-    55.0,
-    60.0,
-    55.0,
-    60.0,
-    60.0
-  ]
+  "widths": [60.0, 60.0, 50.0, 55.0, 60.0, 55.0, 60.0, 60.0]
 }
 ```
 
-At load time the engine:
+`control_points` and `widths` must have the same length (≥ 4). Width values are in metres.
 
-1. Builds a Catmull–Rom spline through the control points (closed loop).
-2. Offsets the centreline left/right by half the width to create road edges.
-3. Generates the asphalt surface using the fewest Box2D-friendly polygons it can, and wraps everything in a grass rectangle.
+Optional keys: `samples_per_segment` (default `8`), `road_friction`, `grass_friction`, `margin`.
 
-The number of control points and the `widths` array must match, and you need at least four control points for a closed track. Width values are in metres.
+## Module overview
 
-Optional keys:
+![Package dependency graph](docs/packages_Drivetrain.png)
 
-- `samples_per_segment` (default `8`) – spline sampling density.
-- `road_friction` / `grass_friction` – traction modifiers.
-- `margin` – additional grass border around the generated road.
+| Module | Role |
+|---|---|
+| `car_env.py` | Gymnasium wrapper — obs, action, reward, reset |
+| `simulation.py` | Box2D world — physics stepping, geometry, contact |
+| `car.py` / `tire.py` | Vehicle chassis and friction-based tyre model |
+| `sensors.py` | 7-ray fan raycasts, max 150 m |
+| `track_loader.py` / `track_builder.py` | JSON → Catmull-Rom spline → Box2D polygons |
+| `timing.py` | Sector and lap timing with best-time tracking |
+| `render.py` | Pygame renderer — track, car, sensors, HUD |
+| `editor/track_editor.py` | Interactive circuit sketching tool |
 
-Legacy polygon-based tracks still load; any file that defines a `surfaces` array bypasses the spline pipeline.
+## Development
 
-## Previewing tracks
+```bash
+uv run pytest                        # run tests
+uv run black src/ tests/             # format
+uv run ruff check src/ tests/ --fix  # lint
+uv run mypy src/ tests/              # type-check
+```
 
-Preview PNGs for bundled tracks live alongside their JSON definitions (for example `tracks/classic_loop_preview.png`). They are generated with matplotlib so you can visually verify the shape before loading it in-game.
-
-## Lap Timing
-
-When a spline track is loaded, the game divides the circuit into mini sectors—one between each pair of control points. Timing starts once you press any input key and resets automatically after every lap. Magenta debug lines span the track from edge to edge for each sector; crossing them records the split. The HUD at the bottom shows the running lap time, best/last laps, and a sector bar that lights up green when you beat your previous best or yellow when you are slower.
+Pre-commit hooks (black, ruff, mypy, commitizen) run automatically on `git commit`.

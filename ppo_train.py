@@ -31,4 +31,4 @@ model = SAC("MlpPolicy", vec_env, device=DEVICE, verbose=1)
 
 
 model.learn(total_timesteps=1000000, progress_bar=True)
-model.save("dist_to_sector_sb3_sac")
+model.save("models/dist_to_sector_sb3_sac")
