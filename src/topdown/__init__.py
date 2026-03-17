@@ -20,6 +20,7 @@ from .track_builder import (
 __all__ = [
     "Car",
     "GroundArea",
+    "EnvironmentConfig",
     "InputHandler",
     "InputMapping",
     "RenderConfig",
@@ -29,6 +30,7 @@ __all__ = [
     "TopDownContactListener",
     "Track",
     "TrackSurface",
+    "TopdownCarEnv",
     "default_track",
     "LoadedTrack",
     "TrackLoadError",

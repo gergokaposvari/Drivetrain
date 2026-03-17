@@ -3,13 +3,37 @@ name = "car-game"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
     "box2d>=2.3.10",
     "box2d-py>=2.3.8",
+    "dot>=0.3.0",
     "gymnasium>=1.2.1",
     "matplotlib>=3.10.7",
+    "opencv-python>=4.12.0.88",
     "pillow>=10.4.0",
+    "pygame>=2.6.1",
     "pygame-ce>=2.5.5",
+    "pylint>=4.0.4",
+    "pytest>=8.4.2",
+    "rl-zoo3>=2.7.0",
+    "rocm",
+    "rocm-sdk-core",
+    "rocm-sdk-devel",
+    "rocm-sdk-libraries-custom",
+    "stable-baselines3>=2.7.0",
     "swig>=4.3.1.post0",
+    "torch",
+    "torchaudio",
+    "torchvision",
+    "tqdm>=4.67.1",
 ]
+
+[tool.uv.sources]
+rocm-sdk-core = { url = "https://repo.radeon.com/rocm/windows/rocm-rel-7.2/rocm_sdk_core-7.2.0.dev0-py3-none-win_amd64.whl" }
+rocm-sdk-devel = { url = "https://repo.radeon.com/rocm/windows/rocm-rel-7.2/rocm_sdk_devel-7.2.0.dev0-py3-none-win_amd64.whl" }
+rocm-sdk-libraries-custom = { url = "https://repo.radeon.com/rocm/windows/rocm-rel-7.2/rocm_sdk_libraries_custom-7.2.0.dev0-py3-none-win_amd64.whl" }
+rocm = { url = "https://repo.radeon.com/rocm/windows/rocm-rel-7.2/rocm-7.2.0.dev0.tar.gz" }
+torch = { url = "https://repo.radeon.com/rocm/windows/rocm-rel-7.2/torch-2.9.1%2Brocmsdk20260116-cp312-cp312-win_amd64.whl" }
+torchaudio = { url = "https://repo.radeon.com/rocm/windows/rocm-rel-7.2/torchaudio-2.9.1%2Brocmsdk20260116-cp312-cp312-win_amd64.whl" }
+torchvision = { url = "https://repo.radeon.com/rocm/windows/rocm-rel-7.2/torchvision-0.24.1%2Brocmsdk20260116-cp312-cp312-win_amd64.whl" }

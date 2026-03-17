@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import List, Set
+from typing import List, Set, TYPE_CHECKING
 
 from Box2D import (  # type: ignore import-untyped
     b2Body,
@@ -10,6 +10,9 @@ from Box2D import (  # type: ignore import-untyped
 )
 
 from .ground import GroundArea
+
+if TYPE_CHECKING:
+    from .car import Car
 
 
 class Tire:
@@ -27,6 +30,7 @@ class Tire:
         dimensions: tuple[float, float] = (0.5, 1.25),
         density: float = 1.0,
         position: tuple[float, float] = (0.0, 0.0),
+        car: "Car | None" = None,
     ) -> None:
         world: b2World = car_body.world
         self.max_forward_speed = max_forward_speed
@@ -36,6 +40,7 @@ class Tire:
         self.max_lateral_impulse = max_lateral_impulse
         self.ground_areas: List[GroundArea] = []
         self.current_traction = 1.0
+        self.car = car
 
         self.body: b2Body = world.CreateDynamicBody(position=position)
         self.body.CreatePolygonFixture(box=dimensions, density=density)
@@ -52,6 +57,12 @@ class Tire:
         body = self.body
         right_normal = body.GetWorldVector((1.0, 0.0))
         return right_normal.dot(body.linearVelocity) * right_normal
+
+    @property
+    def is_fully_on_grass(self) -> bool:
+        return bool(self.ground_areas) and all(
+            area.name.lower() == "grass" for area in self.ground_areas
+        )
 
     def update_friction(self) -> None:
         impulse = -self.lateral_velocity * self.body.mass

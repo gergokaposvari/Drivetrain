@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Dict, Iterable, List, Sequence
 
-from .track import Track, TrackSurface, Vec2
+from .track import Track, TrackRecords, TrackSurface, Vec2
 from .track_builder import (
     DEFAULT_GRASS_FRICTION,
     DEFAULT_ROAD_FRICTION,
@@ -48,12 +48,14 @@ def load_track(path: Path) -> Track:
             spawn_direction = None
             if raw.get("spawn_direction") is not None:
                 spawn_direction = _parse_vector(raw.get("spawn_direction"), "spawn_direction")
-            return Track(
+            track = Track(
                 boundary=boundary,
                 surfaces=surfaces,
                 spawn_point=spawn_point,
                 spawn_direction=spawn_direction,
+                records=_parse_records(raw.get("records")),
             )
+            return track
 
         if "control_points" in raw:
             control_points = _parse_points(
@@ -71,6 +73,7 @@ def load_track(path: Path) -> Track:
                 margin=float(raw.get("margin", 20.0)),
             )
             track = build_track_from_spline(config)
+            records = _parse_records(raw.get("records"))
             if raw.get("spawn_direction") is not None:
                 spawn_direction = _parse_vector(raw.get("spawn_direction"), "spawn_direction")
                 track = Track(
@@ -81,7 +84,10 @@ def load_track(path: Path) -> Track:
                     control_points=track.control_points,
                     widths=track.widths,
                     sector_lines=track.sector_lines,
+                    records=None,
                 )
+            if records is not None:
+                track = replace(track, records=records)
             return track
 
         raise TrackLoadError("Track must define either 'surfaces' or 'control_points'")
@@ -185,6 +191,23 @@ def _parse_vector(raw_vec, label: str) -> Vec2:
     if length == 0:
         raise ValueError(f"{label} must not be the zero vector")
     return x / length, y / length
+
+
+def _parse_records(raw: dict | None) -> TrackRecords | None:
+    if raw is None:
+        return None
+    lap_time = raw.get("fastest_lap_time")
+    fastest_lap = float(lap_time) if lap_time is not None else None
+    sector_times = raw.get("fastest_sector_times")
+    parsed_sectors: Sequence[float | None] | None = None
+    if sector_times is not None:
+        parsed_sectors = tuple(
+            float(value) if value is not None else None for value in sector_times
+        )
+    return TrackRecords(
+        fastest_lap_time=fastest_lap,
+        fastest_sector_times=parsed_sectors,
+    )
 
 
 __all__ = ["LoadedTrack", "TrackLoadError", "discover_tracks", "load_track"]
